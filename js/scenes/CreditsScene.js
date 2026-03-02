@@ -1,0 +1,116 @@
+// Scrolling credits scene
+
+class CreditsScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'CreditsScene' });
+    }
+
+    create() {
+        const w = this.cameras.main.width;
+        const h = this.cameras.main.height;
+
+        this.cameras.main.setBackgroundColor('#111111');
+
+        const credits = [
+            'STREAM KING',
+            '',
+            'A game about marking territory',
+            'and asserting dominance.',
+            '',
+            '',
+            'DESIGN & DEVELOPMENT',
+            'Built with Claude Code',
+            '',
+            '',
+            'LEAD DOG CONSULTANT',
+            'Every dog who ever peed on a hydrant',
+            '',
+            '',
+            'SPECIAL THANKS',
+            'Fire hydrants everywhere',
+            'That one bush in the park',
+            'The elderly woman who didn\'t see it coming',
+            'The ducks (sorry about the pond)',
+            '',
+            '',
+            'CAST',
+            '"Elderly Woman" ..... Herself',
+            '"Holy Man" ..... Definitely not the Pope',
+            '"Royal Fellow" ..... No comment',
+            '"The Rough Rider" ..... Still boxing',
+            '"Strong Leader" ..... Standing authoritatively',
+            '"Supreme Guy" ..... Also standing authoritatively',
+            '',
+            '',
+            'LEGAL DISCLAIMER',
+            'No NPCs were permanently harmed',
+            'in the making of this game.',
+            'The pope\'s feelings may have been hurt.',
+            'All resemblances to real persons,',
+            'living or otherwise, are purely satirical.',
+            '',
+            '',
+            'MUSIC',
+            'Procedurally generated chiptunes',
+            '(no musicians were paid)',
+            '',
+            '',
+            'GRAPHICS',
+            'Procedurally generated rectangles',
+            '(no artists were paid either)',
+            '',
+            '',
+            'AUDIO',
+            'Procedurally generated oscillators',
+            '(are you sensing a pattern?)',
+            '',
+            '',
+            'Made with Phaser 3',
+            'and an unreasonable amount',
+            'of Graphics.fillRect()',
+            '',
+            '',
+            '',
+            'Thanks for playing!',
+            '',
+            '',
+        ];
+
+        // Build credit text as a single block
+        const creditText = this.add.text(w / 2, h + 20, credits.join('\n'), {
+            fontSize: '16px',
+            fontFamily: 'Arial',
+            color: '#FFFFFF',
+            align: 'center',
+            lineSpacing: 8,
+        }).setOrigin(0.5, 0);
+
+        // Make title line gold
+        // (Can't easily style individual lines, but the effect is fine as all-white)
+
+        // Scroll upward
+        const scrollDist = creditText.height + h + 40;
+        this.tweens.add({
+            targets: creditText,
+            y: -creditText.height - 20,
+            duration: scrollDist * 18,
+            ease: 'Linear',
+            onComplete: () => {
+                this.scene.start('MenuScene');
+            },
+        });
+
+        // Back button (fixed at bottom)
+        const backBtn = this.add.text(w / 2, h - 25, '< Back to Menu', {
+            fontSize: '14px', fontFamily: 'Arial', color: '#AAAAAA',
+            backgroundColor: '#222222', padding: { x: 12, y: 6 },
+        }).setOrigin(0.5).setInteractive();
+
+        backBtn.on('pointerover', () => backBtn.setColor('#FFFFFF'));
+        backBtn.on('pointerout', () => backBtn.setColor('#AAAAAA'));
+        backBtn.on('pointerdown', () => {
+            soundManager.playMenuClick();
+            this.scene.start('MenuScene');
+        });
+    }
+}
