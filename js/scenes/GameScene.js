@@ -41,8 +41,19 @@ class GameScene extends Phaser.Scene {
         this.puddles = [];
         this.activePuddle = null;
 
+        // --- Level system ---
+        this.playerLevel = 1;
+        this.playerXP = 0;
+        this.lastAttackedNPC = null; // Track last attacked NPC for XP reset
+        this.dogStartX = 10 * 64 + 32;
+        this.dogStartY = 6 * 64 + 32;
+        this.wearingPopeHat = false;
+
+        // XP thresholds: level 1->2 = 10, 2->3 = 20, 3->4 = 40, etc.
+        this.xpForLevel = [0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560];
+
         // Spawn dog in the park area
-        this.dog = new Dog(this, 10 * 64 + 32, 6 * 64 + 32, this.dogConfig);
+        this.dog = new Dog(this, this.dogStartX, this.dogStartY, this.dogConfig);
 
         // Create NPCs
         this.npcs = [];
@@ -83,6 +94,10 @@ class GameScene extends Phaser.Scene {
 
         // Door cooldown to prevent rapid teleporting
         this.doorCooldown = 0;
+
+        // Frogger-style cars
+        this.cars = [];
+        this.spawnCars();
 
         // Audio tracking
         this.footstepTimer = 0;
@@ -209,8 +224,6 @@ class GameScene extends Phaser.Scene {
             }
         }
 
-        // ---- BUSINESS with brick wall (32-38 x 5-9) — for Ukraine flag ----
-        this.addBuilding(32, 5, 6, 5, 3, 4);
 
         // ---- Additional buildings for variety ----
         // Shop (32-38 x 17-20)
@@ -509,13 +522,6 @@ class GameScene extends Phaser.Scene {
             }).setOrigin(0.5).setDepth(3);
         });
 
-        // Ukraine flag wall
-        this.placeDecoration('deco_ukraine_flag', 35 * 64, 8 * 64 + 32, 2, () => {
-            gfx.fillStyle(0x0057B7);
-            gfx.fillRect(33 * 64, 8 * 64, 4 * 64, 32);
-            gfx.fillStyle(0xFFD700);
-            gfx.fillRect(33 * 64, 8 * 64 + 32, 4 * 64, 32);
-        });
 
         // --- WINDOWS on buildings ---
         // House 1
@@ -874,6 +880,9 @@ class GameScene extends Phaser.Scene {
         // Animate pond ducks
         this.updateDucks(time, delta);
 
+        // Frogger cars
+        this.updateCars();
+
         for (let i = this.npcs.length - 1; i >= 0; i--) {
             const npc = this.npcs[i];
             if (!npc.active) { this.npcs.splice(i, 1); continue; }
@@ -986,7 +995,7 @@ class GameScene extends Phaser.Scene {
     updatePeeing(time, delta) {
         if (!this.activePuddle || !this.dog.isPeeing) return;
         const puddle = this.activePuddle;
-        puddle.radius = Math.min(puddle.radius + (30 * delta / 1000), NPC_CONFIG.puddleMaxRadius);
+        puddle.radius = Math.min(puddle.radius + (30 * delta / 1000), this.getMaxPuddleRadius());
 
         if (puddle.useImage) {
             // Scale image based on puddle radius (64px image, scale to match radius)
@@ -1063,11 +1072,235 @@ class GameScene extends Phaser.Scene {
             this.activePuddle = null;
             soundManager.stopPeeStream();
 
+            // Award XP for completing a puddle
+            this.gainXP(1);
+
             // Deactivate Holy Man's cup when peeing stops
             for (const npc of this.npcs) {
                 if (npc.active && npc.specialBehavior === 'holy_water') {
                     npc.stopHolyWater();
                 }
+            }
+        }
+    }
+
+    // --- Level system ---
+
+    getMaxPuddleRadius() {
+        // Base 60, increases by 10 per level (level 1 = 60, level 10 = 150)
+        return 60 + (this.playerLevel - 1) * 10;
+    }
+
+    gainXP(amount) {
+        if (this.playerLevel >= 10) return;
+        this.playerXP += amount;
+
+        const needed = this.xpForLevel[this.playerLevel]; // XP needed for next level
+        if (this.playerXP >= needed) {
+            this.playerXP -= needed;
+            this.playerLevel++;
+
+            // Level up effect
+            const lvlText = this.add.text(this.dog.x, this.dog.y - 40, `LEVEL ${this.playerLevel}!`, {
+                fontSize: '20px', fontFamily: 'Arial Black', color: '#FFD700',
+                stroke: '#000000', strokeThickness: 3,
+            }).setOrigin(0.5).setDepth(20);
+            this.tweens.add({
+                targets: lvlText, y: lvlText.y - 50, alpha: 0,
+                duration: 1500, onComplete: () => lvlText.destroy(),
+            });
+
+            this.updateLevelHUD();
+        } else {
+            this.updateLevelHUD();
+        }
+    }
+
+    updateLevelHUD() {
+        const uiScene = this.scene.get('UIScene');
+        if (uiScene && uiScene.levelText) {
+            const needed = this.playerLevel >= 10 ? 'MAX' : this.xpForLevel[this.playerLevel];
+            uiScene.levelText.setText(`Lv.${this.playerLevel}  XP: ${this.playerXP}/${needed}`);
+        }
+    }
+
+    respawnDog() {
+        this.dog.setPosition(this.dogStartX, this.dogStartY);
+        this.dog.body.setVelocity(0, 0);
+        if (this.isIndoors) {
+            this.exitInterior();
+        }
+        // Flash effect
+        this.tweens.add({
+            targets: this.dog, alpha: 0.3,
+            duration: 150, yoyo: true, repeat: 3,
+        });
+    }
+
+    // --- Frogger-style cars ---
+
+    generateCarTexture(name, color, horizontal) {
+        const g = this.add.graphics();
+        if (horizontal) {
+            // Side-view car: 48x28
+            const w = 48, h = 28;
+            // Wheels
+            g.fillStyle(0x222222);
+            g.fillCircle(12, 24, 5);
+            g.fillCircle(36, 24, 5);
+            g.lineStyle(1, 0x000000);
+            g.strokeCircle(12, 24, 5);
+            g.strokeCircle(36, 24, 5);
+            // Hubcaps
+            g.fillStyle(0x888888);
+            g.fillCircle(12, 24, 2);
+            g.fillCircle(36, 24, 2);
+            // Car body
+            g.fillStyle(color);
+            g.fillRoundedRect(2, 8, 44, 16, 4);
+            g.lineStyle(2, 0x000000);
+            g.strokeRoundedRect(2, 8, 44, 16, 4);
+            // Cabin/roof
+            g.fillStyle(color);
+            g.fillRoundedRect(12, 1, 22, 10, 3);
+            g.lineStyle(2, 0x000000);
+            g.strokeRoundedRect(12, 1, 22, 10, 3);
+            // Windows
+            g.fillStyle(0x88CCFF);
+            g.fillRect(14, 3, 8, 6);
+            g.fillRect(24, 3, 8, 6);
+            g.lineStyle(1, 0x000000);
+            g.strokeRect(14, 3, 8, 6);
+            g.strokeRect(24, 3, 8, 6);
+            // Headlight
+            g.fillStyle(0xFFFF88);
+            g.fillRect(43, 12, 3, 4);
+            // Taillight
+            g.fillStyle(0xFF3333);
+            g.fillRect(2, 12, 3, 4);
+            g.generateTexture(name, w, h);
+        } else {
+            // Top-down car for vertical roads: 24x44
+            const w = 24, h = 44;
+            // Wheels
+            g.fillStyle(0x222222);
+            g.fillRect(1, 8, 4, 8);
+            g.fillRect(19, 8, 4, 8);
+            g.fillRect(1, 28, 4, 8);
+            g.fillRect(19, 28, 4, 8);
+            // Car body
+            g.fillStyle(color);
+            g.fillRoundedRect(4, 2, 16, 40, 4);
+            g.lineStyle(2, 0x000000);
+            g.strokeRoundedRect(4, 2, 16, 40, 4);
+            // Windshield
+            g.fillStyle(0x88CCFF);
+            g.fillRoundedRect(6, 6, 12, 8, 2);
+            g.lineStyle(1, 0x000000);
+            g.strokeRoundedRect(6, 6, 12, 8, 2);
+            // Rear window
+            g.fillStyle(0x88CCFF);
+            g.fillRoundedRect(6, 30, 12, 6, 2);
+            g.lineStyle(1, 0x000000);
+            g.strokeRoundedRect(6, 30, 12, 6, 2);
+            // Headlights
+            g.fillStyle(0xFFFF88);
+            g.fillCircle(8, 3, 2);
+            g.fillCircle(16, 3, 2);
+            // Taillights
+            g.fillStyle(0xFF3333);
+            g.fillCircle(8, 41, 2);
+            g.fillCircle(16, 41, 2);
+            g.generateTexture(name, w, h);
+        }
+        g.destroy();
+    }
+
+    spawnCars() {
+        const ts = this.tileSize;
+        const carColors = [0xCC2222, 0x2255CC, 0x22AA22, 0xEEEE22, 0xCC6600];
+
+        // Pre-generate car textures
+        for (let i = 0; i < carColors.length; i++) {
+            if (!this.textures.exists(`car_h_${i}`)) {
+                this.generateCarTexture(`car_h_${i}`, carColors[i], true);
+            }
+            if (!this.textures.exists(`car_v_${i}`)) {
+                this.generateCarTexture(`car_v_${i}`, carColors[i], false);
+            }
+        }
+
+        // Horizontal roads: rows 14 and 22
+        const hRoads = [
+            { row: 14, dir: 1, speed: 120 },   // right
+            { row: 22, dir: -1, speed: 100 },  // left
+        ];
+
+        for (const road of hRoads) {
+            const y = road.row * ts + ts / 2;
+            for (let i = 0; i < 5; i++) {
+                const spacing = this.mapWidth * ts / 5;
+                const x = i * spacing + Math.random() * spacing * 0.5;
+                const car = this.add.image(x, y, `car_h_${i % carColors.length}`);
+                car.setDepth(6);
+                // Flip car to face direction of travel
+                if (road.dir < 0) car.setFlipX(true);
+                this.physics.add.existing(car);
+                car.body.setVelocityX(road.speed * road.dir);
+                car._roadDir = road.dir;
+                car._speed = road.speed;
+                car._horizontal = true;
+                car._roadMin = 0;
+                car._roadMax = this.mapWidth * ts;
+                this.cars.push(car);
+            }
+        }
+
+        // Vertical roads: cols 15 and 30
+        const vRoads = [
+            { col: 15, dir: 1, speed: 90 },    // down
+            { col: 30, dir: -1, speed: 110 },   // up
+        ];
+
+        for (const road of vRoads) {
+            const x = road.col * ts + ts / 2;
+            for (let i = 0; i < 5; i++) {
+                const spacing = this.outdoorRows * ts / 5;
+                const y = i * spacing + Math.random() * spacing * 0.5;
+                const car = this.add.image(x, y, `car_v_${i % carColors.length}`);
+                car.setDepth(6);
+                // Flip car to face direction of travel
+                if (road.dir < 0) car.setFlipY(true);
+                this.physics.add.existing(car);
+                car.body.setVelocityY(road.speed * road.dir);
+                car._roadDir = road.dir;
+                car._speed = road.speed;
+                car._horizontal = false;
+                car._roadMin = 0;
+                car._roadMax = this.outdoorRows * ts;
+                this.cars.push(car);
+            }
+        }
+    }
+
+    updateCars() {
+        if (this.isIndoors) return;
+
+        for (const car of this.cars) {
+            // Wrap around when off-screen
+            if (car._horizontal) {
+                if (car._roadDir > 0 && car.x > car._roadMax + 40) car.x = car._roadMin - 40;
+                if (car._roadDir < 0 && car.x < car._roadMin - 40) car.x = car._roadMax + 40;
+            } else {
+                if (car._roadDir > 0 && car.y > car._roadMax + 40) car.y = car._roadMin - 40;
+                if (car._roadDir < 0 && car.y < car._roadMin - 40) car.y = car._roadMax + 40;
+            }
+
+            // Check collision with dog
+            const dist = Phaser.Math.Distance.Between(car.x, car.y, this.dog.x, this.dog.y);
+            if (dist < 25) {
+                this.respawnDog();
+                break;
             }
         }
     }
@@ -1096,7 +1329,7 @@ class GameScene extends Phaser.Scene {
         const hitbox = this.dog.getAttackHitbox();
         let hitNPC = null;
         for (const npc of this.npcs) {
-            if (!npc.active || npc.state === 'attacked' || npc.state === 'leaving') continue;
+            if (!npc.active || npc.state === 'attacked' || npc.state === 'leaving' || npc.state === 'eaten') continue;
             if (Phaser.Math.Distance.Between(hitbox.x, hitbox.y, npc.x, npc.y) < hitbox.radius) {
                 hitNPC = npc; break;
             }
@@ -1104,15 +1337,75 @@ class GameScene extends Phaser.Scene {
         if (hitNPC) {
             soundManager.playAttackHit();
             soundManager.playAttackedScream();
-            hitNPC.getAttacked();
+
+            // Award XP if this is a different NPC than last attacked
+            if (hitNPC !== this.lastAttackedNPC) {
+                this.gainXP(5);
+                this.lastAttackedNPC = hitNPC;
+            }
+
+            // Pope hat easter egg
+            if (hitNPC.config && hitNPC.config.id === 'pope_guy' && !this.wearingPopeHat) {
+                this.wearingPopeHat = true;
+                this.addPopeHatToDog();
+            }
+
+            // Level 10: eat NPCs
+            if (this.playerLevel >= 10) {
+                this.eatNPC(hitNPC);
+            } else {
+                hitNPC.getAttacked();
+            }
+
             for (const npc of this.npcs) {
                 if (!npc.active || npc === hitNPC || npc.state === 'attacked' || npc.state === 'leaving') continue;
                 if (Phaser.Math.Distance.Between(this.dog.x, this.dog.y, npc.x, npc.y) < NPC_CONFIG.fleeDistance) {
                     npc.flee(this.dog.x, this.dog.y);
                 }
             }
-            this.checkAttackedNPCDistance(hitNPC);
+            if (hitNPC.state !== 'eaten') {
+                this.checkAttackedNPCDistance(hitNPC);
+            }
         }
+    }
+
+    eatNPC(npc) {
+        const nx = npc.x;
+        const ny = npc.y;
+        npc.state = 'eaten';
+        npc.setVisible(false);
+        npc.body.setVelocity(0, 0);
+        npc.body.enable = false;
+
+        // Leave skull and crossbones
+        const skull = this.add.text(nx, ny, '\u2620', {
+            fontSize: '28px', color: '#FFFFFF',
+            stroke: '#000000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(5);
+        npc._skull = skull;
+
+        // Regenerate when player walks far away
+        npc._eatenCheck = this.time.addEvent({
+            delay: 1000, loop: true,
+            callback: () => {
+                const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, nx, ny);
+                if (dist > 400) {
+                    skull.destroy();
+                    npc.setVisible(true);
+                    npc.body.enable = true;
+                    npc.state = 'idle';
+                    npc.setStanding();
+                    npc._eatenCheck.remove();
+                }
+            },
+        });
+    }
+
+    addPopeHatToDog() {
+        const hat = this.add.text(0, -25, '\u26EA', {
+            fontSize: '14px', color: '#FFFFFF',
+        }).setOrigin(0.5);
+        this.dog.add(hat);
     }
 
     checkAttackedNPCDistance(npc) {

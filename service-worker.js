@@ -1,4 +1,4 @@
-const CACHE_NAME = 'streamking-v1';
+const CACHE_NAME = 'streamking-v5';
 const ASSETS = [
     '/',
     '/index.html',
@@ -52,8 +52,14 @@ self.addEventListener('fetch', (event) => {
         );
         return;
     }
-    // Local assets: cache first
+    // All local requests: network first, fall back to cache
     event.respondWith(
-        caches.match(event.request).then((cached) => cached || fetch(event.request))
+        fetch(event.request)
+            .then((response) => {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                return response;
+            })
+            .catch(() => caches.match(event.request))
     );
 });

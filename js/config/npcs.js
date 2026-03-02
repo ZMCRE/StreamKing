@@ -91,7 +91,7 @@ const NPC_CONFIG = {
                 skinGroup: 'light', isMale: false, clothingColor: 0x9966AA,
                 hairColor: 0xCCCCCC, hairStyle: 'bun', accessory: 'walker',
             },
-            behavior: 'stops_when_peed_on',
+            behavior: 'fountain_of_youth',
         },
         {
             id: 'pope_guy', name: 'Holy Man',
@@ -122,17 +122,6 @@ const NPC_CONFIG = {
                 hairColor: 0x8B6914, hairStyle: 'mustache', accessory: 'glasses',
             },
             behavior: 'boxing',
-        },
-        {
-            id: 'vlad', name: 'Strong Leader',
-            x: 34 * 64 + 32, y: 9 * 64 + 32,
-            patrol: 'stand', range: 0,
-            appearance: {
-                skinGroup: 'light', isMale: true, clothingColor: 0x222222,
-                hairColor: 0xCCAA77, hairStyle: 'receding', accessory: 'suit',
-            },
-            behavior: 'authoritative',
-            backdrop: 'ukraine_flag',
         },
         {
             id: 'dear_leader', name: 'Supreme Guy',

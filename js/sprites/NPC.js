@@ -148,10 +148,7 @@ class NPC extends Phaser.GameObjects.Container {
         const key = `npc_${this.spriteType}_down_idle`;
         this.bodySprite = this.scene.add.sprite(0, 0, key);
 
-        // Tint generic NPCs for variety (skip for special NPCs with baked appearance)
-        if (!this.isSpecial) {
-            this.bodySprite.setTint(this.clothingColor);
-        }
+        // No tinting — sprites have baked-in clothing colors
 
         this.add(this.bodySprite);
 
@@ -408,11 +405,9 @@ class NPC extends Phaser.GameObjects.Container {
     }
 
     createBackdrop() {
-        // Check for decoration image first
+        // Skip image backdrop if the building already has the flag decoration
+        // (GameScene places deco_ukraine_flag on the building wall)
         if (this.scene.textures.exists('deco_ukraine_flag')) {
-            const flag = this.scene.add.image(this.x, this.y - 20, 'deco_ukraine_flag');
-            flag.setDepth(3);
-            this.backdrop = flag;
             return;
         }
 
@@ -568,9 +563,21 @@ class NPC extends Phaser.GameObjects.Container {
         if (this.reactionCooldown > 0) return;
         if (this.specialBehavior === 'holy_water') return;
 
-        if (this.specialBehavior === 'stops_when_peed_on') {
+        if (this.specialBehavior === 'fountain_of_youth') {
             this.frozenByPee = true;
             this.body.setVelocity(0, 0);
+            const fountainLines = [
+                'The fountain of youth!',
+                'I can see again! The holy water fixed my eyes!',
+                'I don\'t need my glasses anymore!',
+                'My eyesight is restored!',
+                'I feel 50 years younger!',
+                'Is this... the elixir of life?!',
+                'Bless this miraculous water!',
+            ];
+            this.showChatBubble(Phaser.Utils.Array.GetRandom(fountainLines));
+            this.reactionCooldown = 1500;
+            return;
         }
 
         this.state = 'positive';
@@ -584,6 +591,7 @@ class NPC extends Phaser.GameObjects.Container {
         if (this.state === 'attacked' || this.state === 'fleeing' || this.state === 'leaving') return;
         if (this.reactionCooldown > 0) return;
         if (this.specialBehavior === 'holy_water') return;
+        if (this.specialBehavior === 'fountain_of_youth') return;
 
         this.frozenByPee = false;
         this.state = 'angry';
@@ -881,6 +889,5 @@ NPC.SPECIAL_SPRITE_MAP = {
     'pope_guy': 'pope',
     'prince_andy': 'prince',
     'teddy_r': 'teddy',
-    'vlad': 'vlad',
     'dear_leader': 'dear_leader',
 };

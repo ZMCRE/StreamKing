@@ -61,64 +61,8 @@ class DogSelectScene extends Phaser.Scene {
         const previewBg = this.add.circle(this.w / 2, 210, 70, 0x1A3D2A, 0.6);
         previewBg.setStrokeStyle(2, 0x44AA66);
 
-        // --- Color selector ---
-        this.add.text(this.w / 2, 300, 'COAT COLOR', {
-            fontSize: '14px', fontFamily: 'Arial', color: '#CCFFCC',
-        }).setOrigin(0.5);
-
-        this.colorSwatches = [];
-        const swatchStartX = this.w / 2 - (DOG_BREEDS.colors.length - 1) * 22;
-        for (let i = 0; i < DOG_BREEDS.colors.length; i++) {
-            const col = DOG_BREEDS.colors[i];
-            const sx = swatchStartX + i * 44;
-            const sy = 330;
-
-            const swatch = this.add.circle(sx, sy, 14, col.hex);
-            swatch.setStrokeStyle(2, 0x000000);
-
-            const highlight = this.add.circle(sx, sy, 18);
-            highlight.setStrokeStyle(3, 0xFFD700);
-            highlight.setVisible(false);
-
-            const zone = this.add.zone(sx, sy, 36, 36).setInteractive();
-            zone.on('pointerdown', () => {
-                const breed = DOG_BREEDS.breeds[this.selectedBreedIndex];
-                if (breed.forceColor) return;
-                soundManager.playMenuClick();
-                this.selectedColorIndex = i;
-                this.updateColorHighlights();
-                this.updatePreview();
-            });
-
-            this.colorSwatches.push({ swatch, highlight, zone });
-        }
-
-        this.colorDisabledText = this.add.text(this.w / 2, 355, '', {
-            fontSize: '10px', fontFamily: 'Arial', color: '#FFAAAA', fontStyle: 'italic',
-        }).setOrigin(0.5);
-
-        // --- Pattern selector ---
-        this.add.text(this.w / 2, 375, 'PATTERN', {
-            fontSize: '14px', fontFamily: 'Arial', color: '#CCFFCC',
-        }).setOrigin(0.5);
-
-        this.patternLabel = this.add.text(this.w / 2, 398, '', {
-            fontSize: '16px', fontFamily: 'Arial Black', color: '#FFFFFF',
-            stroke: '#000000', strokeThickness: 2,
-        }).setOrigin(0.5);
-
-        this.makeArrowButtons(this.w / 2, 398, 100, () => {
-            const breed = DOG_BREEDS.breeds[this.selectedBreedIndex];
-            this.selectedPatternIndex = (this.selectedPatternIndex - 1 + breed.patterns.length) % breed.patterns.length;
-            this.updatePreview();
-        }, () => {
-            const breed = DOG_BREEDS.breeds[this.selectedBreedIndex];
-            this.selectedPatternIndex = (this.selectedPatternIndex + 1) % breed.patterns.length;
-            this.updatePreview();
-        });
-
         // --- Size selector ---
-        this.add.text(this.w / 2, 435, 'SIZE', {
+        this.add.text(this.w / 2, 310, 'SIZE', {
             fontSize: '14px', fontFamily: 'Arial', color: '#CCFFCC',
         }).setOrigin(0.5);
 
@@ -126,7 +70,7 @@ class DogSelectScene extends Phaser.Scene {
         const sizeNames = ['S', 'M', 'L'];
         for (let i = 0; i < 3; i++) {
             const bx = this.w / 2 + (i - 1) * 60;
-            const by = 462;
+            const by = 338;
 
             const bg = this.add.circle(bx, by, 18, 0x44AA66);
             bg.setStrokeStyle(2, 0x000000);
@@ -193,7 +137,6 @@ class DogSelectScene extends Phaser.Scene {
         });
 
         // Initial highlights
-        this.updateColorHighlights();
         this.updateSizeHighlights();
     }
 
@@ -212,31 +155,8 @@ class DogSelectScene extends Phaser.Scene {
     }
 
     onBreedChanged() {
-        const breed = DOG_BREEDS.breeds[this.selectedBreedIndex];
         this.selectedPatternIndex = 0;
-
-        // If breed forces color, set it
-        if (breed.forceColor) {
-            const forcedIdx = DOG_BREEDS.colors.findIndex(c => c.id === breed.defaultColor);
-            if (forcedIdx >= 0) this.selectedColorIndex = forcedIdx;
-        }
-
-        this.updateColorHighlights();
         this.updatePreview();
-    }
-
-    updateColorHighlights() {
-        const breed = DOG_BREEDS.breeds[this.selectedBreedIndex];
-        for (let i = 0; i < this.colorSwatches.length; i++) {
-            this.colorSwatches[i].highlight.setVisible(i === this.selectedColorIndex);
-            this.colorSwatches[i].swatch.setAlpha(breed.forceColor ? 0.3 : 1);
-        }
-        if (breed.forceColor) {
-            this.colorSwatches[this.selectedColorIndex].swatch.setAlpha(1);
-            this.colorDisabledText.setText('(fixed for this breed)');
-        } else {
-            this.colorDisabledText.setText('');
-        }
     }
 
     updateSizeHighlights() {
@@ -253,8 +173,6 @@ class DogSelectScene extends Phaser.Scene {
 
         // Update labels
         this.breedLabel.setText(breed.name);
-        this.patternLabel.setText(pattern.name);
-
         // Clear previous preview
         this.previewContainer.removeAll(true);
 
@@ -263,22 +181,16 @@ class DogSelectScene extends Phaser.Scene {
         const textureKey = `dog_${spriteKey}_down_idle`;
 
         if (this.textures.exists(textureKey)) {
-            this.drawSpritePreview(breed, color, size, textureKey);
+            // Show HD sprite preview scaled by size
+            const sizeScales = { 0: 1.5, 1: 2.0, 2: 2.5 };
+            const spriteScale = sizeScales[this.selectedSizeIndex] || 2.0;
+            const sprite = this.add.sprite(0, 0, textureKey);
+            sprite.setScale(spriteScale);
+            this.previewContainer.add(sprite);
         } else {
+            // Fallback to procedural preview
             this.drawProceduralPreview(breed, color, size, pattern);
         }
-    }
-
-    drawSpritePreview(breed, color, size, textureKey) {
-        const preview = this.add.sprite(0, 0, textureKey);
-        preview.setScale(size.scale * 1.5); // Scale up slightly for preview visibility
-
-        // Tint if not using default color
-        if (color.id !== breed.defaultColor) {
-            preview.setTint(color.hex);
-        }
-
-        this.previewContainer.add(preview);
     }
 
     drawProceduralPreview(breed, color, size, pattern) {

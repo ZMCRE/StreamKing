@@ -77,7 +77,7 @@ class BootScene extends Phaser.Scene {
         }
 
         // Special NPCs
-        const specialNPCs = ['old_lady', 'pope', 'prince', 'teddy', 'vlad', 'dear_leader'];
+        const specialNPCs = ['old_lady', 'pope', 'prince', 'teddy', 'dear_leader'];
         for (const npc of specialNPCs) {
             for (const frame of npcFrames) {
                 this.load.image(`npc_${npc}_${frame}`, `assets/sprites/npcs/${npc}_${frame}.png`);
@@ -99,7 +99,7 @@ class BootScene extends Phaser.Scene {
             'bench', 'outdoor_table', 'church_cross', 'duck',
             'window_small', 'window_tall', 'couch', 'dining_table',
             'kitchen_counter', 'fridge', 'toilet', 'rug',
-            'ukraine_flag', 'cafe_sign'
+            'cafe_sign'
         ];
 
         for (const name of decorations) {

@@ -39,6 +39,15 @@ class UIScene extends Phaser.Scene {
             });
         });
 
+        // Level/XP display (top-center)
+        this.levelText = this.add.text(this.cameras.main.width / 2, 10, 'Lv.1  XP: 0/10', {
+            fontSize: '14px',
+            fontFamily: 'Arial Black',
+            color: '#FFD700',
+            stroke: '#000000',
+            strokeThickness: 3,
+        }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
+
         // Settings/pause button (top-right)
         const width = this.cameras.main.width;
 
