@@ -1,4 +1,4 @@
-const CACHE_NAME = 'streamking-v6';
+const CACHE_NAME = 'streamking-v7';
 const ASSETS = [
     '/',
     '/index.html',

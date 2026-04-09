@@ -17,7 +17,7 @@ const config = {
             debug: false,
         },
     },
-    scene: [BootScene, MenuScene, DogSelectScene, GameScene, UIScene, SettingsScene, CreditsScene],
+    scene: [BootScene, MenuScene, DogSelectScene, GameScene, UIScene, SettingsScene, CreditsScene, MidnightGardenScene],
     input: {
         activePointers: 3, // Support multi-touch for mobile
     },

@@ -1055,6 +1055,25 @@ class GameScene extends Phaser.Scene {
         }
 
         // Extra benches removed — were causing "random party" confusion at (26,26), (10,26), (40,12)
+
+        // === MIDNIGHT GARDEN PORTAL (park area, near pond) ===
+        const portalX = 6 * 64 + 32;
+        const portalY = 10 * 64 + 32;
+        this.midnightPortal = { x: portalX, y: portalY };
+        // Stone ring
+        gfx.fillStyle(0x4A4A5A);
+        gfx.strokeCircle(portalX, portalY, 28);
+        gfx.lineStyle(3, 0x3A3A4A);
+        gfx.strokeCircle(portalX, portalY, 32);
+        // Inner glow (animated separately in update)
+        this.portalGfx = this.add.graphics();
+        this.portalGfx.setDepth(1.5);
+        this.portalPhase = 0;
+        // Label
+        this.add.text(portalX, portalY - 40, '???', {
+            fontSize: '8px', fontFamily: 'Arial Black', color: '#6688AA',
+            stroke: '#000000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(3);
     }
 
     drawFireHydrant(gfx, x, y) {
@@ -1446,6 +1465,29 @@ class GameScene extends Phaser.Scene {
         }
 
         this.drawPeeStream();
+
+        // Midnight Garden portal animation + check
+        if (this.midnightPortal && this.portalGfx) {
+            this.portalPhase += 0.003 * delta;
+            this.portalGfx.clear();
+            const pa = 0.12 + Math.sin(this.portalPhase) * 0.08;
+            this.portalGfx.fillStyle(0x00AAFF, pa);
+            this.portalGfx.fillCircle(this.midnightPortal.x, this.midnightPortal.y,
+                22 + Math.sin(this.portalPhase * 1.5) * 4);
+            this.portalGfx.fillStyle(0x00DDFF, pa * 0.6);
+            this.portalGfx.fillCircle(this.midnightPortal.x, this.midnightPortal.y,
+                12 + Math.sin(this.portalPhase * 2) * 3);
+
+            // Check if dog is on portal
+            const pdist = Phaser.Math.Distance.Between(
+                this.dog.x, this.dog.y,
+                this.midnightPortal.x, this.midnightPortal.y
+            );
+            if (pdist < 40 && !this.isIndoors) {
+                this.scene.stop('UIScene');
+                this.scene.start('MidnightGardenScene', { dogConfig: this.dogConfig });
+            }
+        }
     }
 
     updateLocationLabel() {
