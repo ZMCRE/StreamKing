@@ -798,6 +798,10 @@ class MidnightGardenScene extends Phaser.Scene {
             gfx.fillCircle(mx, my - 2, 10);
         }
 
+        // === BIOLUMINESCENT POND SHIMMER ===
+        this.pondShimmer = this.add.graphics();
+        this.pondShimmer.setDepth(1.8);
+
         // === PORTAL GLOW (at entry) ===
         const portalGfx = this.add.graphics();
         portalGfx.setDepth(1);
@@ -903,12 +907,38 @@ class MidnightGardenScene extends Phaser.Scene {
     }
 
     buildFlashlightSystem() {
-        // Dark overlay that covers everything
-        this.darkOverlay = this.add.graphics();
-        this.darkOverlay.setDepth(20);
-        this.darkOverlay.setScrollFactor(0);
+        // RenderTexture-based lighting: fill with darkness, erase light holes
+        const cam = this.cameras.main;
+        this.darkRT = this.add.renderTexture(0, 0, cam.width, cam.height);
+        this.darkRT.setDepth(20);
+        this.darkRT.setScrollFactor(0);
 
-        // The "light" mask is drawn by clearing a circle in the overlay each frame
+        // Helper: generate a soft radial gradient circle texture
+        const makeLight = (key, size) => {
+            const g = this.make.graphics({ add: false });
+            const half = size / 2;
+            const steps = 24;
+            for (let i = steps; i >= 0; i--) {
+                const t = i / steps;
+                const r = half * (0.3 + 0.7 * t);
+                g.fillStyle(0xFFFFFF, (1 - t) * (1 - t));
+                g.fillCircle(half, half, r);
+            }
+            g.generateTexture(key, size, size);
+            g.destroy();
+        };
+
+        makeLight('light_big', 400);     // flashlight
+        makeLight('light_med', 180);      // lampposts
+        makeLight('light_small', 80);     // lanterns
+        makeLight('light_tiny', 50);      // glow puddles
+
+        // Reusable stamp images (hidden, used only for erase)
+        this.lightBig = this.add.image(0, 0, 'light_big').setVisible(false);
+        this.lightMed = this.add.image(0, 0, 'light_med').setVisible(false);
+        this.lightSmall = this.add.image(0, 0, 'light_small').setVisible(false);
+        this.lightTiny = this.add.image(0, 0, 'light_tiny').setVisible(false);
+
         this.flashlightOn = true;
     }
 
@@ -1076,131 +1106,65 @@ class MidnightGardenScene extends Phaser.Scene {
     // ==================== FLASHLIGHT ====================
 
     updateFlashlight() {
-        this.darkOverlay.clear();
-
         const cam = this.cameras.main;
-        const screenW = cam.width;
-        const screenH = cam.height;
         const zoom = cam.zoom;
-
-        // Dog position in screen space
-        const dogScreenX = (this.dog.x - cam.scrollX) * zoom;
-        const dogScreenY = (this.dog.y - cam.scrollY) * zoom;
-
         const fl = this.C.flashlight;
         const time = this.time.now;
-
-        // Flicker
-        const flicker = Math.sin(time * fl.flickerSpeed) * fl.flickerAmount +
-                         Math.sin(time * fl.flickerSpeed * 2.3) * fl.flickerAmount * 0.5;
-
-        // Bonus radius from caught fireflies
-        const bonusRadius = this.caughtFireflies * this.C.fireflies.lightBonus;
-        const radius = (fl.radius + flicker + bonusRadius) * zoom;
-        const outerRadius = (fl.outerRadius + flicker + bonusRadius) * zoom;
 
         // Check if dog is in a dark zone
         const dogTX = Math.floor(this.dog.x / 64);
         const dogTY = Math.floor(this.dog.y / 64);
         const inDarkZone = this.mapData[dogTY] && this.mapData[dogTY][dogTX] === this.C.tiles.DARK_ZONE;
-
         const alpha = inDarkZone ? fl.darkZoneAlpha : fl.ambientAlpha;
 
-        // Draw dark overlay with circular cutout via concentric rings
-        // Outer darkness
-        this.darkOverlay.fillStyle(0x0A0A1A, alpha);
-        this.darkOverlay.fillRect(0, 0, screenW, screenH);
+        // Fill with darkness
+        this.darkRT.fill(0x050510, alpha);
 
-        // Punch a gradient hole for the flashlight
-        const steps = 12;
-        for (let i = steps; i >= 0; i--) {
-            const t = i / steps;
-            const r = radius + (outerRadius - radius) * t;
-            const a = alpha * t;
-            this.darkOverlay.fillStyle(0x0A0A1A, a - alpha);
-            // We'll use a brighter fill to "lighten" the center
-        }
+        // Flicker
+        const flicker = Math.sin(time * fl.flickerSpeed) * fl.flickerAmount +
+                         Math.sin(time * fl.flickerSpeed * 2.3) * fl.flickerAmount * 0.5;
+        const bonusRadius = this.caughtFireflies * this.C.fireflies.lightBonus;
 
-        // Simple approach: erase the flashlight area with decreasing alpha circles
-        // Since Phaser graphics don't support easy masking, we'll draw a warm glow
-        this.darkOverlay.fillStyle(0x0A0A1A, -alpha); // won't work — need different approach
+        // Dog flashlight (screen coords)
+        const dogSX = (this.dog.x - cam.scrollX) * zoom;
+        const dogSY = (this.dog.y - cam.scrollY) * zoom;
+        const flashScale = (fl.radius + flicker + bonusRadius) / 200;
+        this.lightBig.setScale(flashScale);
+        this.darkRT.erase(this.lightBig, dogSX - 200 * flashScale, dogSY - 200 * flashScale);
 
-        // Better approach: draw the overlay in sections, leaving a hole
-        this.darkOverlay.clear();
-
-        // Use a bitmap approach — draw 4 rectangles around the light circle
-        // and fill the circle edge with gradient rings
-        const cx = dogScreenX;
-        const cy = dogScreenY;
-
-        // Fill everything dark
-        this.darkOverlay.fillStyle(0x050510, alpha);
-        this.darkOverlay.fillRect(0, 0, screenW, screenH);
-
-        // Cut out the flashlight by drawing progressively more transparent circles
-        // from outer edge to center
-        for (let i = 0; i <= 20; i++) {
-            const t = i / 20;
-            const r = outerRadius * (1 - t * 0.7);
-            const clearAlpha = alpha * (1 - t);
-            // Draw a "clearing" ring by filling with background-ish color
-            this.darkOverlay.fillStyle(0x050510, clearAlpha - alpha);
-        }
-
-        // Actually, the simplest effective approach in Phaser 3:
-        // Fill everything, then use blendMode to punch a hole
-        this.darkOverlay.clear();
-        this.darkOverlay.fillStyle(0x050510, alpha);
-        this.darkOverlay.fillRect(0, 0, screenW, screenH);
-
-        // Draw the light circle with blend mode ERASE
-        // (this removes pixels from the overlay)
-        this.darkOverlay.blendMode = Phaser.BlendModes.NORMAL;
-
-        // Create a render texture for proper masking if not exists
-        if (!this.lightMask) {
-            this.lightMask = this.make.graphics({ add: false });
-        }
-        this.lightMask.clear();
-
-        // Draw white circle on mask
-        this.lightMask.fillStyle(0xFFFFFF);
-        this.lightMask.fillCircle(cx, cy, radius);
-
-        // Gradient edge (semi-transparent rings)
-        for (let i = 0; i < 8; i++) {
-            const t = i / 8;
-            const r = radius + (outerRadius - radius) * t;
-            const a = 1 - t;
-            this.lightMask.fillStyle(0xFFFFFF, a);
-            this.lightMask.fillCircle(cx, cy, r);
-        }
-
-        // Apply mask to overlay
-        const mask = new Phaser.Display.Masks.GeometryMask(this, this.lightMask);
-        mask.invertAlpha = true;
-        this.darkOverlay.setMask(mask);
-
-        // Add lamppost light circles to the mask
+        // Lamppost lights
         for (const lamp of this.lampposts) {
             const lsx = (lamp.x - cam.scrollX) * zoom;
             const lsy = ((lamp.y - 22) - cam.scrollY) * zoom;
-            this.lightMask.fillStyle(0xFFFFFF, 0.7);
-            this.lightMask.fillCircle(lsx, lsy, 70 * zoom);
+            this.darkRT.erase(this.lightMed, lsx - 90, lsy - 90);
         }
 
-        // Add lantern lights
+        // Lantern lights
         for (const lantern of this.lanterns) {
             const lsx = (lantern.x - cam.scrollX) * zoom;
             const lsy = (lantern.y - cam.scrollY) * zoom;
-            this.lightMask.fillStyle(0xFFFFFF, 0.5);
-            this.lightMask.fillCircle(lsx, lsy, 30 * zoom);
+            this.darkRT.erase(this.lightSmall, lsx - 40, lsy - 40);
         }
 
-        // Caught fireflies add ambient glow around dog
-        if (this.caughtFireflies > 0) {
-            this.lightMask.fillStyle(0xFFFFFF, 0.3);
-            this.lightMask.fillCircle(cx, cy, (radius + 30) * 1.2);
+        // Glow puddles cast light
+        for (const puddle of this.puddles) {
+            if (puddle.radius > 5) {
+                const psx = (puddle.x - cam.scrollX) * zoom;
+                const psy = (puddle.y - cam.scrollY) * zoom;
+                this.darkRT.erase(this.lightTiny, psx - 25, psy - 25);
+            }
+        }
+
+        // Active puddle also casts light
+        if (this.activePuddle && this.activePuddle.radius > 3) {
+            const psx = (this.activePuddle.x - cam.scrollX) * zoom;
+            const psy = (this.activePuddle.y - cam.scrollY) * zoom;
+            this.darkRT.erase(this.lightTiny, psx - 25, psy - 25);
+        }
+
+        // Indoors — disable darkness
+        if (this.isIndoors) {
+            this.darkRT.clear();
         }
     }
 
@@ -1451,7 +1415,85 @@ class MidnightGardenScene extends Phaser.Scene {
         if (this.dialogueBox) { this.dialogueBox.destroy(); this.dialogueBox = null; }
         if (this.dialogueText) { this.dialogueText.destroy(); this.dialogueText = null; }
         if (this.dialogueName) { this.dialogueName.destroy(); this.dialogueName = null; }
+        if (this.constellationGfx) { this.constellationGfx.destroy(); this.constellationGfx = null; }
         this.dialogueActive = false;
+    }
+
+    showConstellation() {
+        if (!this.constellationIndex) this.constellationIndex = 0;
+        const constellations = this.C.constellations;
+        const c = constellations[this.constellationIndex % constellations.length];
+        this.constellationIndex++;
+
+        this.dialogueActive = true;
+        const cam = this.cameras.main;
+
+        if (this.dialogueBox) this.dialogueBox.destroy();
+        if (this.dialogueText) this.dialogueText.destroy();
+        if (this.dialogueName) this.dialogueName.destroy();
+        if (this.constellationGfx) this.constellationGfx.destroy();
+
+        // Star field background
+        const starBgW = 320;
+        const starBgH = 100;
+        const boxX = cam.width / 2 - starBgW / 2;
+        const boxY = cam.height / 2 - starBgH / 2 - 30;
+
+        this.constellationGfx = this.add.graphics();
+        this.constellationGfx.setScrollFactor(0).setDepth(112);
+        // Dark sky bg
+        this.constellationGfx.fillStyle(0x050520, 0.95);
+        this.constellationGfx.fillRoundedRect(boxX, boxY, starBgW, starBgH, 8);
+        this.constellationGfx.lineStyle(2, 0x223355);
+        this.constellationGfx.strokeRoundedRect(boxX, boxY, starBgW, starBgH, 8);
+        // Random stars
+        for (let i = 0; i < 30; i++) {
+            const sx = boxX + 10 + Math.random() * (starBgW - 20);
+            const sy = boxY + 10 + Math.random() * (starBgH - 20);
+            this.constellationGfx.fillStyle(0xFFFFFF, 0.3 + Math.random() * 0.5);
+            this.constellationGfx.fillCircle(sx, sy, 0.5 + Math.random());
+        }
+        // "Constellation" — connected bright stars
+        const numStars = 4 + Math.floor(Math.random() * 4);
+        const cStars = [];
+        for (let i = 0; i < numStars; i++) {
+            cStars.push({
+                x: boxX + 40 + (i / numStars) * (starBgW - 80) + (Math.random() - 0.5) * 40,
+                y: boxY + 20 + Math.random() * (starBgH - 40),
+            });
+        }
+        // Lines between stars
+        this.constellationGfx.lineStyle(1, 0x4488CC, 0.5);
+        for (let i = 0; i < cStars.length - 1; i++) {
+            this.constellationGfx.lineBetween(cStars[i].x, cStars[i].y, cStars[i + 1].x, cStars[i + 1].y);
+        }
+        // Bright stars
+        for (const s of cStars) {
+            this.constellationGfx.fillStyle(0xFFFFFF, 0.8);
+            this.constellationGfx.fillCircle(s.x, s.y, 2.5);
+            this.constellationGfx.fillStyle(0x88BBFF, 0.3);
+            this.constellationGfx.fillCircle(s.x, s.y, 6);
+        }
+
+        // Info box below
+        const infoY = boxY + starBgH + 8;
+        this.dialogueBox = this.add.graphics();
+        this.dialogueBox.setScrollFactor(0).setDepth(110);
+        this.dialogueBox.fillStyle(0x111122, 0.9);
+        this.dialogueBox.fillRoundedRect(boxX, infoY, starBgW, 45, 8);
+        this.dialogueBox.lineStyle(2, 0x334466);
+        this.dialogueBox.strokeRoundedRect(boxX, infoY, starBgW, 45, 8);
+
+        this.dialogueName = this.add.text(boxX + 10, infoY + 6, c.name, {
+            fontSize: '10px', fontFamily: 'Arial Black', color: '#88BBFF',
+        }).setScrollFactor(0).setDepth(111);
+
+        this.dialogueText = this.add.text(boxX + 10, infoY + 22, c.desc, {
+            fontSize: '8px', fontFamily: 'Arial', color: '#AABBCC',
+            wordWrap: { width: starBgW - 20 },
+        }).setScrollFactor(0).setDepth(111);
+
+        this.time.delayedCall(5000, () => this.dismissDialogue());
     }
 
     // ==================== INTERACTION ====================
@@ -1494,6 +1536,23 @@ class MidnightGardenScene extends Phaser.Scene {
                         this.showLanternMessage(lantern.message);
                     }
                     break;
+                }
+            }
+        }
+
+        // Check telescope (when inside the tower)
+        if (!showPrompt && this.isIndoors && this.currentRoom === 'tower') {
+            const telescopeX = 2.5 * 64;
+            const telescopeY = this.interiorStartRow * 64 + 2.5 * 64;
+            const tDist = Phaser.Math.Distance.Between(dogX, dogY, telescopeX, telescopeY);
+            if (tDist < 80) {
+                this.interactPrompt.setPosition(telescopeX, telescopeY - 40);
+                this.interactPrompt.setText('[E] Look through telescope');
+                this.interactPrompt.setVisible(true);
+                showPrompt = true;
+
+                if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+                    this.showConstellation();
                 }
             }
         }
@@ -1807,6 +1866,17 @@ class MidnightGardenScene extends Phaser.Scene {
         this.portalGlow.fillCircle(15 * 64, 28 * 64, 40 + Math.sin(this.portalGlowPhase * 1.5) * 5);
 
         this.drawPeeStream();
+
+        // Pond shimmer
+        this.pondShimmer.clear();
+        const shimPhase = time * 0.001;
+        for (let i = 0; i < 5; i++) {
+            const sx = 21 * 64 + Math.sin(shimPhase + i * 1.3) * 96 + 64;
+            const sy = 6 * 64 + Math.cos(shimPhase * 0.7 + i * 0.9) * 64 + 32;
+            const a = 0.15 + Math.sin(shimPhase * 2 + i) * 0.1;
+            this.pondShimmer.fillStyle(0x00FFCC, a);
+            this.pondShimmer.fillCircle(sx, sy, 6 + Math.sin(shimPhase + i) * 3);
+        }
 
         // Show hint near entry when first starting
         if (time < 8000) {

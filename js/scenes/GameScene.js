@@ -1478,14 +1478,25 @@ class GameScene extends Phaser.Scene {
             this.portalGfx.fillCircle(this.midnightPortal.x, this.midnightPortal.y,
                 12 + Math.sin(this.portalPhase * 2) * 3);
 
-            // Check if dog is on portal
+            // Check if dog walks onto portal — require brief stand (not instant)
             const pdist = Phaser.Math.Distance.Between(
                 this.dog.x, this.dog.y,
                 this.midnightPortal.x, this.midnightPortal.y
             );
-            if (pdist < 40 && !this.isIndoors) {
-                this.scene.stop('UIScene');
-                this.scene.start('MidnightGardenScene', { dogConfig: this.dogConfig });
+            if (pdist < 36 && !this.isIndoors) {
+                if (!this.portalTimer) this.portalTimer = 0;
+                this.portalTimer += delta;
+                if (this.portalTimer > 800) { // stand on it for 0.8s
+                    this.portalTimer = 0;
+                    this.cameras.main.fade(600, 0, 0, 30, false, (cam, progress) => {
+                        if (progress === 1) {
+                            this.scene.stop('UIScene');
+                            this.scene.start('MidnightGardenScene', { dogConfig: this.dogConfig });
+                        }
+                    });
+                }
+            } else {
+                this.portalTimer = 0;
             }
         }
     }
