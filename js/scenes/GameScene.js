@@ -35,6 +35,7 @@ class GameScene extends Phaser.Scene {
         this.buildMap();
         this.buildInteriors();
         this.renderMap();
+        this.furnitureBodies = this.physics.add.staticGroup();
         this.buildFurniture();
         this.buildOutdoorDecorations();
 
@@ -63,12 +64,19 @@ class GameScene extends Phaser.Scene {
         for (const special of NPC_CONFIG.specialNPCs) {
             this.spawnNPC(special.x, special.y, special);
         }
-        // Indoor NPCs
-        for (const indoor of NPC_CONFIG.indoorNPCs) {
-            this.spawnNPC(indoor.x, indoor.y, indoor);
+        // Indoor NPCs (from ROOM_LAYOUTS config)
+        for (const [roomId, layout] of Object.entries(ROOM_LAYOUTS)) {
+            const ox = layout.startX * 64;
+            const oy = (layout.startY || this.interiorStartRow) * 64;
+            for (const npcDef of layout.npcs) {
+                const nx = ox + npcDef.relX * 64;
+                const ny = oy + npcDef.relY * 64;
+                this.spawnNPC(nx, ny, npcDef);
+            }
         }
 
         this.physics.add.collider(this.dog, this.wallBodies);
+        this.physics.add.collider(this.dog, this.furnitureBodies);
 
         this.cameras.main.startFollow(this.dog, true, 0.08, 0.08);
         this.cameras.main.setBounds(0, 0, this.worldWidth, this.worldHeight);
@@ -108,6 +116,12 @@ class GameScene extends Phaser.Scene {
             fontSize: '14px', fontFamily: 'Arial Black', color: '#FFFFFF',
             stroke: '#000000', strokeThickness: 3,
         }).setScrollFactor(0).setDepth(100).setOrigin(0.5, 0);
+
+        // Door approach prompt (floating "▼ Enter" near doors)
+        this.doorPrompt = this.add.text(0, 0, '\u25BC Enter', {
+            fontSize: '11px', fontFamily: 'Arial Black', color: '#FFFFFF',
+            stroke: '#000000', strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(10).setVisible(false);
     }
 
     // ==================== MAP BUILDING ====================
@@ -117,6 +131,8 @@ class GameScene extends Phaser.Scene {
         // 0=grass 1=sidewalk 2=road 3=wall 4=roof 5=darkgrass 6=water
         // 7=woodfloor 8=door 9=churchwall 10=churchroof 11=intwall
         // 12=tilefloor 13=carpet 14=patio 15=exitdoor
+        // 16=shopwall 17=shoproof 18=cafewall 19=caferoof
+        // 20=brickwall 21=stonefloor 22=fence 24=bathroom_tile
         const T = this.tileSize;
         this.mapData = [];
         for (let y = 0; y < this.mapHeight; y++) {
@@ -179,7 +195,11 @@ class GameScene extends Phaser.Scene {
 
         // ---- CHURCH (top-right, 18-24 x 2-8) ----
         this.addBuilding(18, 2, 7, 6, 9, 10); // church uses stone walls, dark roof
-        // Cross on top (just a decoration drawn later)
+        this.mapData[7][21] = 8; // church door (front-center)
+        this.doors.push({
+            outside: { x: 21, y: 7 }, outsideReturn: { x: 21, y: 8 },
+            inside: { x: 6, y: 47 }, buildingId: 'church',
+        });
 
         // ---- HOUSE 1 (left of south road, 2-7 x 17-20) ----
         this.addBuilding(2, 17, 5, 4, 3, 4);
@@ -214,7 +234,12 @@ class GameScene extends Phaser.Scene {
         });
 
         // ---- RESTAURANT / CAFE (18-25 x 17-20) ----
-        this.addBuilding(18, 17, 7, 4, 3, 4);
+        this.addBuilding(18, 17, 7, 4, 18, 19); // warm terracotta cafe tiles
+        this.mapData[20][21] = 8; // cafe door
+        this.doors.push({
+            outside: { x: 21, y: 20 }, outsideReturn: { x: 21, y: 21 },
+            inside: { x: 19, y: 47 }, buildingId: 'cafe',
+        });
         // Outdoor patio in front
         for (let y = 20; y < 22; y++) {
             for (let x = 18; x < 25; x++) {
@@ -224,10 +249,14 @@ class GameScene extends Phaser.Scene {
             }
         }
 
-
         // ---- Additional buildings for variety ----
         // Shop (32-38 x 17-20)
-        this.addBuilding(32, 17, 6, 4, 3, 4);
+        this.addBuilding(32, 17, 6, 4, 16, 17); // blue-grey shop tiles
+        this.mapData[20][35] = 8; // shop door
+        this.doors.push({
+            outside: { x: 35, y: 20 }, outsideReturn: { x: 35, y: 21 },
+            inside: { x: 31, y: 47 }, buildingId: 'shop',
+        });
 
         // Tall building (38-43 x 2-10)
         this.addBuilding(38, 2, 5, 8, 3, 4);
@@ -252,6 +281,8 @@ class GameScene extends Phaser.Scene {
             'grass', 'sidewalk', 'road', 'wall', 'roof', 'darkgrass', 'water',
             'woodfloor', 'door', 'churchwall', 'churchroof', 'intwall',
             'tilefloor', 'carpet', 'patio', 'exitdoor',
+            'shopwall', 'shoproof', 'cafewall', 'caferoof',
+            'brickwall', 'stonefloor', 'fence', 'carpet_plum', 'bathroom_tile',
         ];
         for (let y = 0; y < this.mapHeight; y++) {
             for (let x = 0; x < this.mapWidth; x++) {
@@ -262,7 +293,9 @@ class GameScene extends Phaser.Scene {
 
         // Collision for solid tiles
         this.wallBodies = this.physics.add.staticGroup();
-        const solidTiles = new Set([3, 4, 6, 9, 10, 11]);
+        // Solid: wall(3), roof(4), water(6), churchwall(9), churchroof(10), intwall(11),
+        // shopwall(16), shoproof(17), cafewall(18), caferoof(19), brickwall(20), fence(22)
+        const solidTiles = new Set([3, 4, 6, 9, 10, 11, 16, 17, 18, 19, 20, 22]);
         for (let y = 0; y < this.mapHeight; y++) {
             for (let x = 0; x < this.mapWidth; x++) {
                 if (solidTiles.has(this.mapData[y][x])) {
@@ -286,61 +319,56 @@ class GameScene extends Phaser.Scene {
     }
 
     buildInteriors() {
-        // Each interior room is 10 wide x 8 tall, starting at interiorStartRow
-        // Layout per room: walls on perimeter, wood floor inside, door at bottom center
-        const rooms = [
-            { id: 'house1', startX: 0, startY: this.interiorStartRow },
-            { id: 'house2', startX: 11, startY: this.interiorStartRow },
-            { id: 'house3', startX: 22, startY: this.interiorStartRow },
-            { id: 'house4', startX: 33, startY: this.interiorStartRow },
-        ];
-
-        for (const room of rooms) {
-            const sx = room.startX;
-            const sy = room.startY;
-            const rw = 10;
-            const rh = 8;
+        // Build rooms from ROOM_LAYOUTS config (data-driven)
+        for (const [roomId, layout] of Object.entries(ROOM_LAYOUTS)) {
+            const sx = layout.startX;
+            const sy = layout.startY || this.interiorStartRow;
+            const rw = layout.width;
+            const rh = layout.height;
 
             // Store room pixel bounds (inner walkable area, 1 tile inset from walls)
-            this.roomBounds[room.id] = {
+            this.roomBounds[roomId] = {
                 x: (sx + 1) * 64,
                 y: (sy + 1) * 64,
                 width: (rw - 2) * 64,
                 height: (rh - 2) * 64,
-                // Full room bounds including walls (for camera)
                 fullX: sx * 64,
                 fullY: sy * 64,
                 fullWidth: rw * 64,
                 fullHeight: rh * 64,
             };
 
+            // Fill perimeter with interior walls, interior with wood floor
             for (let y = sy; y < sy + rh; y++) {
                 for (let x = sx; x < sx + rw; x++) {
                     if (x >= this.mapWidth || y >= this.mapHeight) continue;
                     if (y === sy || y === sy + rh - 1 || x === sx || x === sx + rw - 1) {
                         this.mapData[y][x] = 11; // interior wall
                     } else {
-                        // Mix of floor types
-                        if (x >= sx + 7 && y >= sy + 1 && y <= sy + 3) {
-                            this.mapData[y][x] = 12; // tile floor (kitchen area)
-                        } else if (x >= sx + 7 && y >= sy + 5) {
-                            this.mapData[y][x] = 12; // tile floor (bathroom)
-                        } else if (x <= sx + 4 && y >= sy + 4) {
-                            this.mapData[y][x] = 13; // carpet (living room)
-                        } else {
-                            this.mapData[y][x] = 7; // wood floor
+                        this.mapData[y][x] = 7; // wood floor default
+                    }
+                }
+            }
+
+            // Apply zone floor tiles
+            for (const zone of layout.zones) {
+                for (let zy = zone.y; zy < zone.y + zone.h; zy++) {
+                    for (let zx = zone.x; zx < zone.x + zone.w; zx++) {
+                        const mapX = sx + zx;
+                        const mapY = sy + zy;
+                        if (mapX > sx && mapX < sx + rw - 1 && mapY > sy && mapY < sy + rh - 1) {
+                            this.mapData[mapY][mapX] = zone.tile;
                         }
                     }
                 }
             }
 
-            // Exit door at bottom center of room
-            const doorX = sx + 5;
-            const doorY = sy + rh - 1;
-            this.mapData[doorY][doorX] = 15; // exit door
+            // Exit door
+            const doorX = sx + layout.exitDoor.relX;
+            const doorY = sy + layout.exitDoor.relY;
+            this.mapData[doorY][doorX] = 15;
 
-            // Find matching door link and add inside->outside
-            const link = this.doors.find(d => d.buildingId === room.id);
+            const link = this.doors.find(d => d.buildingId === roomId);
             if (link) {
                 link.insideExit = { x: doorX, y: doorY };
             }
@@ -351,58 +379,238 @@ class GameScene extends Phaser.Scene {
         const gfx = this.add.graphics();
         gfx.setDepth(2);
 
-        const rooms = [
-            { startX: 0, startY: this.interiorStartRow },
-            { startX: 11, startY: this.interiorStartRow },
-            { startX: 22, startY: this.interiorStartRow },
-            { startX: 33, startY: this.interiorStartRow },
-        ];
+        for (const [roomId, layout] of Object.entries(ROOM_LAYOUTS)) {
+            const ox = layout.startX * 64;
+            const oy = (layout.startY || this.interiorStartRow) * 64;
 
-        for (const room of rooms) {
-            const ox = room.startX * 64;
-            const oy = room.startY * 64;
+            // Place furniture from config
+            for (const f of layout.furniture) {
+                const px = ox + f.relX * 64;
+                const py = oy + f.relY * 64;
+                const reg = FURNITURE_REGISTRY[f.type];
+                if (!reg) continue;
 
-            // Couch (living room, bottom-left area)
-            this.placeDecoration('deco_couch', ox + 2 * 64, oy + 5 * 64, 2,
-                () => this.drawCouch(gfx, ox + 2 * 64, oy + 5 * 64));
+                const drawFn = this.getFurnitureFallback(gfx, f.type, px, py, ox);
+                this.placeDecoration(reg.texture, px, py, f.type === 'rug' ? 1 : 2,
+                    drawFn, f.physics);
+            }
 
-            // Table with chairs (center)
-            this.placeDecoration('deco_dining_table', ox + 4 * 64 + 32, oy + 2 * 64 + 32, 2,
-                () => this.drawTable(gfx, ox + 4 * 64 + 32, oy + 2 * 64 + 32));
+            // Place dividers (visual + physics)
+            for (const div of layout.dividers) {
+                const dx = ox + div.relX * 64;
+                const dy = oy + div.relY * 64;
+                gfx.fillStyle(0xE8DCC8);
+                gfx.fillRect(dx - 4, dy, div.width, div.height);
+                gfx.lineStyle(2, 0xCCBBA0);
+                gfx.strokeRect(dx - 4, dy, div.width, div.height);
 
-            // Kitchen counter (top-right)
-            this.placeDecoration('deco_kitchen_counter', ox + 8 * 64 + 5, oy + 1.5 * 64, 2,
-                () => this.drawKitchenCounter(gfx, ox + 8 * 64, oy + 1.5 * 64));
-
-            // Fridge
-            this.placeDecoration('deco_fridge', ox + 8 * 64 - 8, oy + 1.5 * 64 - 33, 2,
-                () => this.drawFridge(gfx, ox + 8 * 64, oy + 1.5 * 64));
-
-            // Toilet (bottom-right)
-            this.placeDecoration('deco_toilet', ox + 8 * 64 + 16, oy + 6 * 64, 2,
-                () => this.drawToilet(gfx, ox + 8 * 64 + 16, oy + 6 * 64));
-
-            // Bathroom divider wall segment (visual only, stays procedural)
-            gfx.fillStyle(0xE8DCC8);
-            gfx.fillRect(ox + 7 * 64 - 4, oy + 4.5 * 64, 8, 64 * 2);
-            gfx.lineStyle(2, 0xCCBBA0);
-            gfx.strokeRect(ox + 7 * 64 - 4, oy + 4.5 * 64, 8, 64 * 2);
-
-            // Rug in living room
-            this.placeDecoration('deco_rug', ox + 3 * 64, oy + 5.5 * 64, 1, () => {
-                gfx.fillStyle(0xAA3333, 0.3);
-                gfx.fillRect(ox + 1.5 * 64, oy + 4.5 * 64, 3 * 64, 2 * 64);
-                gfx.lineStyle(1, 0x882222, 0.4);
-                gfx.strokeRect(ox + 1.5 * 64, oy + 4.5 * 64, 3 * 64, 2 * 64);
-            });
+                const divBody = this.physics.add.staticImage(dx, dy + div.height / 2, null);
+                divBody.setVisible(false);
+                divBody.body.setSize(div.width, div.height);
+                divBody.refreshBody();
+                this.furnitureBodies.add(divBody);
+            }
         }
     }
 
-    placeDecoration(textureKey, x, y, depth, fallbackFn) {
+    getFurnitureFallback(gfx, type, px, py, ox) {
+        switch (type) {
+            case 'couch': return () => this.drawCouch(gfx, px, py);
+            case 'dining_table': return () => this.drawTable(gfx, px, py);
+            case 'kitchen_counter': return () => this.drawKitchenCounter(gfx, px, py);
+            case 'fridge': return () => this.drawFridge(gfx, px, py);
+            case 'toilet': return () => this.drawToilet(gfx, px, py);
+            case 'rug': return () => this.drawRug(gfx, px, py);
+            case 'bed': return () => this.drawBed(gfx, px, py);
+            case 'tv': return () => this.drawTV(gfx, px, py);
+            case 'sink': return () => this.drawSink(gfx, px, py);
+            case 'bookshelf': return () => this.drawBookshelf(gfx, px, py);
+            case 'pew': return () => this.drawPew(gfx, px, py);
+            case 'altar': return () => this.drawAltar(gfx, px, py);
+            case 'shelf': return () => this.drawShelf(gfx, px, py);
+            case 'checkout_counter': return () => this.drawCheckoutCounter(gfx, px, py);
+            default: return () => {};
+        }
+    }
+
+    drawRug(gfx, x, y) {
+        gfx.fillStyle(0xAA3333, 0.65);
+        gfx.fillRect(x - 1.5 * 64, y - 64, 3 * 64, 2 * 64);
+        gfx.lineStyle(1, 0x882222, 0.7);
+        gfx.strokeRect(x - 1.5 * 64, y - 64, 3 * 64, 2 * 64);
+    }
+
+    drawBed(gfx, x, y) {
+        // Frame
+        gfx.fillStyle(0x6D4C41);
+        gfx.fillRect(x - 32, y - 48, 64, 96);
+        gfx.lineStyle(1, 0x4E342E);
+        gfx.strokeRect(x - 32, y - 48, 64, 96);
+        // Sheets (blue)
+        gfx.fillStyle(0x5C7FA8);
+        gfx.fillRect(x - 28, y - 20, 56, 60);
+        // Pillow
+        gfx.fillStyle(0xF5F0EB);
+        gfx.fillRect(x - 24, y - 44, 48, 18);
+        gfx.lineStyle(1, 0xD4CFC8);
+        gfx.strokeRect(x - 24, y - 44, 48, 18);
+    }
+
+    drawTV(gfx, x, y) {
+        // Screen body
+        gfx.fillStyle(0x1A1A1A);
+        gfx.fillRect(x - 28, y - 6, 56, 12);
+        // Screen glow
+        gfx.fillStyle(0x1E3A5F);
+        gfx.fillRect(x - 26, y - 5, 52, 10);
+        // Power indicator
+        gfx.fillStyle(0x44FF44);
+        gfx.fillCircle(x + 22, y + 3, 1.5);
+    }
+
+    drawSink(gfx, x, y) {
+        // Basin
+        gfx.fillStyle(0xE8E8E8);
+        gfx.fillRect(x - 16, y - 12, 32, 24);
+        gfx.lineStyle(1, 0xBDBDBD);
+        gfx.strokeRect(x - 16, y - 12, 32, 24);
+        // Inner oval
+        gfx.lineStyle(1, 0xAAAAAA);
+        gfx.strokeEllipse(x, y + 2, 20, 14);
+        // Faucet
+        gfx.fillStyle(0x999999);
+        gfx.fillRect(x - 2, y - 12, 4, 6);
+    }
+
+    drawBookshelf(gfx, x, y) {
+        // Back panel
+        gfx.fillStyle(0x6D4C41);
+        gfx.fillRect(x - 28, y - 14, 56, 28);
+        gfx.lineStyle(1, 0x4E342E);
+        gfx.strokeRect(x - 28, y - 14, 56, 28);
+        // Shelf divider
+        gfx.fillStyle(0x8D6E63);
+        gfx.fillRect(x - 28, y - 1, 56, 3);
+        // Books (top row)
+        const colors = [0xC62828, 0x1565C0, 0x2E7D32, 0xF57F17, 0x6A1B9A, 0x00838F];
+        let bx = x - 24;
+        for (let i = 0; i < 6; i++) {
+            gfx.fillStyle(colors[i]);
+            gfx.fillRect(bx, y - 12, 5, 10);
+            bx += 7;
+        }
+        // Books (bottom row)
+        bx = x - 24;
+        for (let i = 0; i < 6; i++) {
+            gfx.fillStyle(colors[(i + 3) % colors.length]);
+            gfx.fillRect(bx, y + 3, 5, 10);
+            bx += 7;
+        }
+    }
+
+    drawPew(gfx, x, y) {
+        // Wooden church pew — long bench with back rest
+        // Seat
+        gfx.fillStyle(0x6D4C41);
+        gfx.fillRect(x - 40, y - 4, 80, 16);
+        gfx.lineStyle(1, 0x4E342E);
+        gfx.strokeRect(x - 40, y - 4, 80, 16);
+        // Back rest
+        gfx.fillStyle(0x5D4037);
+        gfx.fillRect(x - 40, y - 10, 80, 8);
+        gfx.lineStyle(1, 0x3E2723);
+        gfx.strokeRect(x - 40, y - 10, 80, 8);
+        // Arm rests (ends)
+        gfx.fillStyle(0x4E342E);
+        gfx.fillRect(x - 42, y - 10, 4, 22);
+        gfx.fillRect(x + 38, y - 10, 4, 22);
+    }
+
+    drawAltar(gfx, x, y) {
+        // Church altar — raised platform with cloth and cross
+        // Base platform
+        gfx.fillStyle(0x8D6E63);
+        gfx.fillRect(x - 32, y - 8, 64, 28);
+        gfx.lineStyle(2, 0x4E342E);
+        gfx.strokeRect(x - 32, y - 8, 64, 28);
+        // White cloth drape
+        gfx.fillStyle(0xF5F0EB);
+        gfx.fillRect(x - 30, y - 6, 60, 8);
+        // Gold trim on cloth
+        gfx.fillStyle(0xD4A017, 0.8);
+        gfx.fillRect(x - 30, y + 1, 60, 2);
+        // Small cross on top
+        gfx.fillStyle(0xD4A017);
+        gfx.fillRect(x - 2, y - 16, 4, 14);
+        gfx.fillRect(x - 6, y - 12, 12, 4);
+    }
+
+    drawShelf(gfx, x, y) {
+        // Shop shelf — long horizontal shelf with items
+        // Back panel
+        gfx.fillStyle(0x90A4AE);
+        gfx.fillRect(x - 40, y - 12, 80, 24);
+        gfx.lineStyle(1, 0x607D8B);
+        gfx.strokeRect(x - 40, y - 12, 80, 24);
+        // Shelf divider
+        gfx.fillStyle(0x78909C);
+        gfx.fillRect(x - 40, y - 1, 80, 2);
+        // Items on top row (colored boxes — pet products)
+        const topColors = [0xE53935, 0x43A047, 0x1E88E5, 0xFDD835, 0xE53935, 0x8E24AA];
+        let bx = x - 36;
+        for (let i = 0; i < 6; i++) {
+            gfx.fillStyle(topColors[i]);
+            gfx.fillRect(bx, y - 10, 8, 8);
+            bx += 12;
+        }
+        // Items on bottom row
+        bx = x - 36;
+        for (let i = 0; i < 6; i++) {
+            gfx.fillStyle(topColors[(i + 2) % topColors.length]);
+            gfx.fillRect(bx, y + 2, 8, 8);
+            bx += 12;
+        }
+    }
+
+    drawCheckoutCounter(gfx, x, y) {
+        // Shop checkout counter with register
+        // Counter body
+        gfx.fillStyle(0x6D4C41);
+        gfx.fillRect(x - 28, y - 18, 56, 36);
+        gfx.lineStyle(2, 0x4E342E);
+        gfx.strokeRect(x - 28, y - 18, 56, 36);
+        // Counter top (lighter)
+        gfx.fillStyle(0x8D6E63);
+        gfx.fillRect(x - 28, y - 18, 56, 8);
+        // Cash register
+        gfx.fillStyle(0x333333);
+        gfx.fillRect(x - 10, y - 16, 20, 12);
+        gfx.fillStyle(0x4CAF50);
+        gfx.fillRect(x - 8, y - 14, 16, 6);
+        // Register buttons
+        gfx.fillStyle(0xFFFFFF);
+        gfx.fillRect(x - 6, y - 6, 3, 3);
+        gfx.fillRect(x, y - 6, 3, 3);
+        gfx.fillRect(x + 6, y - 6, 3, 3);
+    }
+
+    placeDecoration(textureKey, x, y, depth, fallbackFn, physicsConfig) {
         if (this.textures.exists(textureKey)) {
             this.add.image(x, y, textureKey).setDepth(depth);
         } else {
             fallbackFn();
+        }
+        // Add invisible static body for furniture collision (dog only, not NPCs)
+        if (physicsConfig && physicsConfig.width) {
+            const body = this.physics.add.staticImage(
+                physicsConfig.offsetX ? x + physicsConfig.offsetX : x,
+                physicsConfig.offsetY ? y + physicsConfig.offsetY : y,
+                null
+            );
+            body.setVisible(false);
+            body.body.setSize(physicsConfig.width, physicsConfig.height);
+            body.refreshBody();
+            this.furnitureBodies.add(body);
         }
     }
 
@@ -499,29 +707,135 @@ class GameScene extends Phaser.Scene {
             this.addOutdoorTable(gfx, tx, ty);
         }
 
-        // Church cross
-        const crossX = 21 * 64;
-        const crossY = 2 * 64 - 8;
+        // === BUILDING SHADOWS (depth 0.5, drawn before buildings) ===
+        const shadowGfx = this.add.graphics();
+        shadowGfx.setDepth(0.5);
+        shadowGfx.fillStyle(0x000000, 0.18);
+        // Church shadow (18-24 x 2-7, 7w x 6h)
+        shadowGfx.fillRect(18 * 64 + 4, 2 * 64 + 4, 7 * 64, 6 * 64);
+        // House 1 shadow (2-6 x 17-20, 5w x 4h)
+        shadowGfx.fillRect(2 * 64 + 4, 17 * 64 + 4, 5 * 64, 4 * 64);
+        // House 2 shadow (8-12 x 17-20)
+        shadowGfx.fillRect(8 * 64 + 4, 17 * 64 + 4, 5 * 64, 4 * 64);
+        // House 3 shadow (2-6 x 25-28)
+        shadowGfx.fillRect(2 * 64 + 4, 25 * 64 + 4, 5 * 64, 4 * 64);
+        // House 4 shadow (32-36 x 25-28)
+        shadowGfx.fillRect(32 * 64 + 4, 25 * 64 + 4, 5 * 64, 4 * 64);
+        // Cafe shadow (18-24 x 17-20)
+        shadowGfx.fillRect(18 * 64 + 4, 17 * 64 + 4, 7 * 64, 4 * 64);
+        // Shop shadow (32-37 x 17-20)
+        shadowGfx.fillRect(32 * 64 + 4, 17 * 64 + 4, 6 * 64, 4 * 64);
+        // Tall building shadow (38-42 x 2-9)
+        shadowGfx.fillRect(38 * 64 + 4, 2 * 64 + 4, 5 * 64, 8 * 64);
+
+        // === HOUSE COLOR TINTS (subtle overlays on houses 2-4) ===
+        const tintGfx = this.add.graphics();
+        tintGfx.setDepth(1.5);
+        // House 2 — blue tint
+        tintGfx.fillStyle(0x4488CC, 0.12);
+        tintGfx.fillRect(8 * 64, 18 * 64, 5 * 64, 2 * 64); // walls only (skip roof)
+        // House 3 — warm/yellow tint
+        tintGfx.fillStyle(0xCCAA44, 0.12);
+        tintGfx.fillRect(2 * 64, 26 * 64, 5 * 64, 2 * 64);
+        // House 4 — green tint
+        tintGfx.fillStyle(0x44AA66, 0.12);
+        tintGfx.fillRect(32 * 64, 26 * 64, 5 * 64, 2 * 64);
+
+        // === CHIMNEYS on houses 1 and 3 ===
+        gfx.fillStyle(0x5D4037);
+        // House 1 chimney (on roof, tile 2,17 area)
+        gfx.fillRect(3 * 64 + 10, 17 * 64 - 12, 16, 20);
+        gfx.fillStyle(0x4E342E);
+        gfx.fillRect(3 * 64 + 8, 17 * 64 - 14, 20, 4);
+        // House 3 chimney
+        gfx.fillStyle(0x5D4037);
+        gfx.fillRect(3 * 64 + 10, 25 * 64 - 12, 16, 20);
+        gfx.fillStyle(0x4E342E);
+        gfx.fillRect(3 * 64 + 8, 25 * 64 - 14, 20, 4);
+
+        // === CHURCH STEEPLE (triangle above roof center) ===
+        const steepleX = 21.5 * 64; // center of church (tiles 18-24)
+        const steepleTopY = 2 * 64 - 40;
+        const steepleBaseY = 2 * 64;
+        gfx.fillStyle(0x5D4037);
+        gfx.fillTriangle(
+            steepleX, steepleTopY,
+            steepleX - 40, steepleBaseY,
+            steepleX + 40, steepleBaseY
+        );
+        gfx.lineStyle(2, 0x4E342E);
+        gfx.strokeTriangle(
+            steepleX, steepleTopY,
+            steepleX - 40, steepleBaseY,
+            steepleX + 40, steepleBaseY
+        );
+
+        // Church cross (larger, on top of steeple)
+        const crossX = steepleX;
+        const crossY = steepleTopY - 4;
         this.placeDecoration('deco_church_cross', crossX, crossY - 10, 2, () => {
             gfx.fillStyle(0xCCAA44);
-            gfx.fillRect(crossX - 3, crossY - 24, 6, 28);
-            gfx.fillRect(crossX - 10, crossY - 18, 20, 6);
+            gfx.fillRect(crossX - 4, crossY - 32, 8, 36);
+            gfx.fillRect(crossX - 14, crossY - 24, 28, 8);
             gfx.lineStyle(1, 0x000000);
-            gfx.strokeRect(crossX - 3, crossY - 24, 6, 28);
-            gfx.strokeRect(crossX - 10, crossY - 18, 20, 6);
+            gfx.strokeRect(crossX - 4, crossY - 32, 8, 36);
+            gfx.strokeRect(crossX - 14, crossY - 24, 28, 8);
         });
 
-        // Restaurant sign
-        this.placeDecoration('deco_cafe_sign', 21.5 * 64, 17 * 64 + 4, 3, () => {
+        // Church sign
+        this.add.text(21.5 * 64, 7 * 64 + 48, "St. Barkley's", {
+            fontSize: '8px', fontFamily: 'Arial Black', color: '#FFE082',
+            stroke: '#000000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(3);
+
+        // === CAFE SIGN (on wall face) ===
+        this.placeDecoration('deco_cafe_sign', 21.5 * 64, 18 * 64 + 4, 3, () => {
             gfx.fillStyle(0xCC3333);
-            gfx.fillRect(19 * 64, 17 * 64 - 4, 5 * 64, 16);
+            gfx.fillRect(19 * 64, 18 * 64 - 4, 5 * 64, 16);
             gfx.lineStyle(1, 0x000000);
-            gfx.strokeRect(19 * 64, 17 * 64 - 4, 5 * 64, 16);
-            this.add.text(21.5 * 64, 17 * 64 + 4, 'CAFE', {
-                fontSize: '10px', fontFamily: 'Arial Black', color: '#FFFFFF',
+            gfx.strokeRect(19 * 64, 18 * 64 - 4, 5 * 64, 16);
+            this.add.text(21.5 * 64, 18 * 64 + 4, 'The Daily Grind', {
+                fontSize: '8px', fontFamily: 'Arial Black', color: '#FFFFFF',
             }).setOrigin(0.5).setDepth(3);
         });
 
+        // === CAFE AWNING (striped red/white over patio) ===
+        const awningGfx = this.add.graphics();
+        awningGfx.setDepth(2.5);
+        const awningY = 20 * 64 - 8;
+        const awningW = 5 * 64;
+        const awningH = 20;
+        const stripeW = 20;
+        for (let sx = 0; sx < awningW; sx += stripeW * 2) {
+            awningGfx.fillStyle(0xCC3333, 0.85);
+            awningGfx.fillRect(19 * 64 + sx, awningY, stripeW, awningH);
+            awningGfx.fillStyle(0xFFFFFF, 0.85);
+            awningGfx.fillRect(19 * 64 + sx + stripeW, awningY, stripeW, awningH);
+        }
+        awningGfx.lineStyle(1, 0x000000, 0.3);
+        awningGfx.strokeRect(19 * 64, awningY, awningW, awningH);
+
+        // === SHOP SIGN ===
+        this.add.text(35 * 64, 18 * 64 + 4, "Pete's Pet Shop", {
+            fontSize: '8px', fontFamily: 'Arial Black', color: '#90CAF9',
+            stroke: '#000000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(3);
+
+        // === TALL BUILDING SIGN ===
+        this.add.text(40.5 * 64, 3 * 64 + 4, 'OFFICES', {
+            fontSize: '9px', fontFamily: 'Arial Black', color: '#FFFFFF',
+            stroke: '#000000', strokeThickness: 2,
+        }).setOrigin(0.5).setDepth(3);
+
+        // === HOUSE NUMBER SIGNS ===
+        const houseSignStyle = {
+            fontSize: '7px', fontFamily: 'Arial Black', color: '#FFE0B2',
+            stroke: '#000000', strokeThickness: 2,
+        };
+        this.add.text(4 * 64 + 32, 20 * 64 + 48, 'No. 1', houseSignStyle).setOrigin(0.5).setDepth(3);
+        this.add.text(10 * 64 + 32, 20 * 64 + 48, 'No. 2', houseSignStyle).setOrigin(0.5).setDepth(3);
+        this.add.text(4 * 64 + 32, 28 * 64 + 48, 'No. 3', houseSignStyle).setOrigin(0.5).setDepth(3);
+        this.add.text(34 * 64 + 32, 28 * 64 + 48, 'No. 4', houseSignStyle).setOrigin(0.5).setDepth(3);
 
         // --- WINDOWS on buildings ---
         // House 1
@@ -536,11 +850,13 @@ class GameScene extends Phaser.Scene {
         // House 4
         this.addWindow(gfx, 33, 27);
         this.addWindow(gfx, 35, 27);
-        // Church windows
-        this.addWindow(gfx, 18, 4, true);
-        this.addWindow(gfx, 18, 6, true);
-        this.addWindow(gfx, 24, 4, true);
-        this.addWindow(gfx, 24, 6, true);
+        // Church windows (moved inward 1 tile from edges + front-facing)
+        this.addWindow(gfx, 19, 4, true);
+        this.addWindow(gfx, 19, 6, true);
+        this.addWindow(gfx, 23, 4, true);
+        this.addWindow(gfx, 23, 6, true);
+        this.addWindow(gfx, 20, 7);  // front-facing left
+        this.addWindow(gfx, 23, 7);  // front-facing right
         // Cafe windows
         this.addWindow(gfx, 19, 19);
         this.addWindow(gfx, 21, 19);
@@ -548,10 +864,6 @@ class GameScene extends Phaser.Scene {
         // Shop windows
         this.addWindow(gfx, 33, 19);
         this.addWindow(gfx, 35, 19);
-        // Business building windows
-        this.addWindow(gfx, 33, 7);
-        this.addWindow(gfx, 35, 7);
-        this.addWindow(gfx, 37, 7);
         // Tall building windows
         this.addWindow(gfx, 39, 4);
         this.addWindow(gfx, 41, 4);
@@ -559,6 +871,71 @@ class GameScene extends Phaser.Scene {
         this.addWindow(gfx, 41, 6);
         this.addWindow(gfx, 39, 8);
         this.addWindow(gfx, 41, 8);
+
+        // === FIRE HYDRANTS (pee targets!) ===
+        const hydrantPositions = [
+            { x: 1, y: 20 },   // near house 1
+            { x: 7, y: 28 },   // near house 3
+            { x: 31, y: 20 },  // near shop
+            { x: 37, y: 28 },  // near house 4
+            { x: 13, y: 14 },  // roadside
+        ];
+        for (const h of hydrantPositions) {
+            this.drawFireHydrant(gfx, h.x * 64 + 32, h.y * 64 + 32);
+        }
+
+        // === FLOWER PATCHES ===
+        const flowerGfx = this.add.graphics();
+        flowerGfx.setDepth(1.2);
+        const flowerColors = [0xFF6B6B, 0xFFD93D, 0x6BCB77, 0xAE6BFF, 0xFF8ED4, 0x4ECDC4];
+        const flowerPatches = [
+            { x: 26, y: 10 }, { x: 28, y: 11 }, { x: 27, y: 9 },  // NE open grass
+            { x: 34, y: 12 }, { x: 36, y: 13 },                     // east of road
+            { x: 10, y: 25 }, { x: 12, y: 26 },                     // south central
+            { x: 25, y: 25 }, { x: 27, y: 26 }, { x: 26, y: 27 },  // south mid
+            { x: 40, y: 15 }, { x: 42, y: 16 },                     // east side
+        ];
+        for (const fp of flowerPatches) {
+            const cx = fp.x * 64 + 32;
+            const cy = fp.y * 64 + 32;
+            for (let i = 0; i < 6; i++) {
+                const fx = cx + (Math.random() - 0.5) * 48;
+                const fy = cy + (Math.random() - 0.5) * 48;
+                const color = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+                flowerGfx.fillStyle(color, 0.9);
+                flowerGfx.fillCircle(fx, fy, 3);
+                flowerGfx.fillStyle(0x2E7D32, 0.7);
+                flowerGfx.fillRect(fx - 0.5, fy + 3, 1, 5);
+            }
+        }
+
+        // === EXTRA BENCHES (south area + east side) ===
+        this.addBench(gfx, 26 * 64 + 32, 26 * 64 + 32);
+        this.addBench(gfx, 10 * 64 + 32, 26 * 64 + 32);
+        this.addBench(gfx, 40 * 64 + 32, 12 * 64 + 32);
+    }
+
+    drawFireHydrant(gfx, x, y) {
+        // Base
+        gfx.fillStyle(0xCC2222);
+        gfx.fillRect(x - 8, y - 2, 16, 18);
+        gfx.lineStyle(1, 0x991111);
+        gfx.strokeRect(x - 8, y - 2, 16, 18);
+        // Top dome
+        gfx.fillStyle(0xCC2222);
+        gfx.fillRect(x - 6, y - 10, 12, 10);
+        gfx.fillStyle(0xDD3333);
+        gfx.fillRect(x - 4, y - 14, 8, 6);
+        // Cap
+        gfx.fillStyle(0xAA1111);
+        gfx.fillRect(x - 5, y - 15, 10, 3);
+        // Side nozzles
+        gfx.fillStyle(0xBB2222);
+        gfx.fillRect(x - 14, y - 2, 8, 6);
+        gfx.fillRect(x + 6, y - 2, 8, 6);
+        // Highlight
+        gfx.fillStyle(0xFF6666, 0.4);
+        gfx.fillRect(x - 2, y - 8, 3, 6);
     }
 
     addBench(gfx, x, y) {
@@ -727,15 +1104,7 @@ class GameScene extends Phaser.Scene {
         }
     }
 
-    addBench(gfx, x, y) {
-        gfx.fillStyle(0x6D4C41);
-        gfx.fillRect(x - 20, y - 6, 40, 12);
-        gfx.lineStyle(2, 0x000000);
-        gfx.strokeRect(x - 20, y - 6, 40, 12);
-        gfx.fillStyle(0x4E342E);
-        gfx.fillRect(x - 18, y + 6, 4, 8);
-        gfx.fillRect(x + 14, y + 6, 4, 8);
-    }
+    // Duplicate addBench removed — first definition at line 564 is used
 
     drawOutdoorTable(gfx, x, y) {
         // Small round table
@@ -798,6 +1167,50 @@ class GameScene extends Phaser.Scene {
                 this.doorCooldown = 500;
                 return;
             }
+        }
+    }
+
+    updateDoorPrompt(time) {
+        if (this.isIndoors) {
+            // Show prompt near exit door when indoors
+            const link = this.doors.find(d => d.buildingId === this.currentRoom);
+            if (link && link.insideExit) {
+                const ex = link.insideExit.x * 64 + 32;
+                const ey = link.insideExit.y * 64;
+                const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, ex, ey + 32);
+                if (dist < 128) {
+                    const bob = Math.sin(time * 0.004) * 4;
+                    this.doorPrompt.setText('\u25B2 Exit');
+                    this.doorPrompt.setPosition(ex, ey - 12 + bob);
+                    this.doorPrompt.setVisible(true);
+                    return;
+                }
+            }
+            this.doorPrompt.setVisible(false);
+            return;
+        }
+
+        let closest = null;
+        let closestDist = Infinity;
+        for (const door of this.doors) {
+            const dx = door.outside.x * 64 + 32;
+            const dy = door.outside.y * 64 + 32;
+            const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, dx, dy);
+            if (dist < 128 && dist < closestDist) {
+                closest = door;
+                closestDist = dist;
+            }
+        }
+
+        if (closest) {
+            const dx = closest.outside.x * 64 + 32;
+            const dy = closest.outside.y * 64;
+            const bob = Math.sin(time * 0.004) * 4;
+            this.doorPrompt.setText('\u25BC Enter');
+            this.doorPrompt.setPosition(dx, dy - 12 + bob);
+            this.doorPrompt.setVisible(true);
+        } else {
+            this.doorPrompt.setVisible(false);
         }
     }
 
@@ -873,6 +1286,7 @@ class GameScene extends Phaser.Scene {
 
         if (this.doorCooldown > 0) this.doorCooldown -= delta;
         this.checkDoors();
+        this.updateDoorPrompt(time);
 
         // Update location label
         this.updateLocationLabel();
@@ -899,12 +1313,20 @@ class GameScene extends Phaser.Scene {
         const ty = Math.floor(this.dog.y / 64);
         const tx = Math.floor(this.dog.x / 64);
 
-        if (ty >= this.interiorStartRow) {
+        if (this.isIndoors && this.currentRoom && ROOM_LAYOUTS[this.currentRoom]) {
+            this.locationLabel.setText(ROOM_LAYOUTS[this.currentRoom].name);
+        } else if (ty >= this.interiorStartRow) {
             this.locationLabel.setText('Indoors');
         } else if (tx >= 1 && tx <= 12 && ty >= 1 && ty <= 12) {
             this.locationLabel.setText('Town Park');
         } else if (tx >= 18 && tx <= 25 && ty >= 17 && ty <= 21) {
-            this.locationLabel.setText('Cafe');
+            this.locationLabel.setText('Cafe District');
+        } else if (tx >= 18 && tx <= 24 && ty >= 1 && ty <= 8) {
+            this.locationLabel.setText('Church');
+        } else if (tx >= 32 && tx <= 37 && ty >= 17 && ty <= 21) {
+            this.locationLabel.setText('Shop District');
+        } else if (tx >= 38 && tx <= 42 && ty >= 2 && ty <= 10) {
+            this.locationLabel.setText('Office District');
         } else if (this.mapData[ty] && this.mapData[ty][tx] === 2) {
             this.locationLabel.setText('');
         } else if (this.mapData[ty] && this.mapData[ty][tx] === 1) {
@@ -1128,7 +1550,9 @@ class GameScene extends Phaser.Scene {
         this.dog.setPosition(this.dogStartX, this.dogStartY);
         this.dog.body.setVelocity(0, 0);
         if (this.isIndoors) {
-            this.exitInterior();
+            this.isIndoors = false;
+            this.currentRoom = null;
+            this.exitRoom();
         }
         // Flash effect
         this.tweens.add({

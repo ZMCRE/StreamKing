@@ -17,7 +17,9 @@ class BootScene extends Phaser.Scene {
         this.tileNames = [
             'grass', 'sidewalk', 'road', 'wall', 'roof', 'darkgrass',
             'water', 'woodfloor', 'door', 'churchwall', 'churchroof',
-            'intwall', 'tilefloor', 'carpet', 'patio', 'exitdoor'
+            'intwall', 'tilefloor', 'carpet', 'patio', 'exitdoor',
+            'shopwall', 'shoproof', 'cafewall', 'caferoof',
+            'brickwall', 'stonefloor', 'fence', 'carpet_plum', 'bathroom_tile'
         ];
 
         // Attempt to load HD tile textures
@@ -99,7 +101,7 @@ class BootScene extends Phaser.Scene {
             'bench', 'outdoor_table', 'church_cross', 'duck',
             'window_small', 'window_tall', 'couch', 'dining_table',
             'kitchen_counter', 'fridge', 'toilet', 'rug',
-            'cafe_sign'
+            'cafe_sign', 'bed', 'tv', 'sink', 'bookshelf'
         ];
 
         for (const name of decorations) {
@@ -260,9 +262,9 @@ class BootScene extends Phaser.Scene {
                 g.strokeRect(32, 32, 32, 32);
             },
             carpet: (g) => {
-                g.fillStyle(0x7B5B3A);
+                g.fillStyle(0x6B8A5B);
                 g.fillRect(0, 0, 64, 64);
-                g.fillStyle(0x8B6B4A, 0.3);
+                g.fillStyle(0x7B9A6B, 0.3);
                 for (let i = 0; i < 10; i++) g.fillRect(Math.random() * 60, Math.random() * 60, 4, 4);
             },
             patio: (g) => {
@@ -285,6 +287,87 @@ class BootScene extends Phaser.Scene {
                 g.fillCircle(44, 34, 4);
                 g.fillStyle(0xFF4444, 0.8);
                 g.fillTriangle(32, 14, 26, 6, 38, 6);
+            },
+            shopwall: (g) => {
+                g.fillStyle(0x607D8B);
+                g.fillRect(0, 0, 64, 64);
+                g.lineStyle(1, 0x455A64);
+                for (let row = 0; row < 4; row++) {
+                    const offset = row % 2 === 0 ? 0 : 16;
+                    for (let col = 0; col < 3; col++) {
+                        g.strokeRect(offset + col * 24, row * 16, 22, 14);
+                    }
+                }
+            },
+            shoproof: (g) => {
+                g.fillStyle(0x37474F);
+                g.fillRect(0, 0, 64, 64);
+                g.lineStyle(1, 0x263238);
+                g.lineBetween(0, 16, 64, 16);
+                g.lineBetween(0, 32, 64, 32);
+                g.lineBetween(0, 48, 64, 48);
+            },
+            cafewall: (g) => {
+                g.fillStyle(0xBF8040);
+                g.fillRect(0, 0, 64, 64);
+                g.lineStyle(1, 0xA0602D);
+                for (let row = 0; row < 4; row++) {
+                    const offset = row % 2 === 0 ? 0 : 16;
+                    for (let col = 0; col < 3; col++) {
+                        g.strokeRect(offset + col * 24, row * 16, 22, 14);
+                    }
+                }
+            },
+            caferoof: (g) => {
+                g.fillStyle(0x8D4925);
+                g.fillRect(0, 0, 64, 64);
+                g.lineStyle(1, 0x7A3B1A);
+                g.lineBetween(0, 16, 64, 16);
+                g.lineBetween(0, 32, 64, 32);
+                g.lineBetween(0, 48, 64, 48);
+            },
+            brickwall: (g) => {
+                g.fillStyle(0xA65035);
+                g.fillRect(0, 0, 64, 64);
+                g.lineStyle(1, 0x8B3A24);
+                for (let row = 0; row < 4; row++) {
+                    const offset = row % 2 === 0 ? 0 : 16;
+                    for (let col = 0; col < 3; col++) {
+                        g.strokeRect(offset + col * 24, row * 16, 22, 14);
+                    }
+                }
+            },
+            stonefloor: (g) => {
+                g.fillStyle(0xB0A89A);
+                g.fillRect(0, 0, 64, 64);
+                g.lineStyle(1, 0x9A9080);
+                g.strokeRect(0, 0, 32, 32);
+                g.strokeRect(32, 0, 32, 32);
+                g.strokeRect(16, 32, 32, 32);
+            },
+            fence: (g) => {
+                g.fillStyle(0x4CAF50);
+                g.fillRect(0, 0, 64, 64);
+                g.fillStyle(0x8D6E63);
+                g.fillRect(4, 20, 8, 32);
+                g.fillRect(52, 20, 8, 32);
+                g.fillRect(0, 24, 64, 6);
+                g.fillRect(0, 40, 64, 6);
+            },
+            carpet_plum: (g) => {
+                g.fillStyle(0x7B6B8A);
+                g.fillRect(0, 0, 64, 64);
+                g.fillStyle(0x8B7B9A, 0.3);
+                for (let i = 0; i < 10; i++) g.fillRect(Math.random() * 60, Math.random() * 60, 4, 4);
+            },
+            bathroom_tile: (g) => {
+                g.fillStyle(0xD6E4EC);
+                g.fillRect(0, 0, 64, 64);
+                g.lineStyle(1, 0xB8CCD8);
+                g.strokeRect(0, 0, 32, 32);
+                g.strokeRect(32, 0, 32, 32);
+                g.strokeRect(0, 32, 32, 32);
+                g.strokeRect(32, 32, 32, 32);
             }
         };
 
