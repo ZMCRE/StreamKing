@@ -363,6 +363,34 @@ class GameScene extends Phaser.Scene {
                 }
             }
 
+            // Place interior walls as real tiles (tile 11) with doorway gaps
+            if (layout.interiorWalls) {
+                for (const wall of layout.interiorWalls) {
+                    if (wall.w) {
+                        // Horizontal wall segment
+                        for (let wx = wall.x; wx < wall.x + wall.w; wx++) {
+                            if (wall.gapX !== undefined && wx === wall.gapX) continue; // doorway gap
+                            const mapX = sx + wx;
+                            const mapY = sy + wall.y;
+                            if (mapX > sx && mapX < sx + rw - 1 && mapY > sy && mapY < sy + rh - 1) {
+                                this.mapData[mapY][mapX] = 11;
+                            }
+                        }
+                    }
+                    if (wall.h) {
+                        // Vertical wall segment
+                        for (let wy = wall.y; wy < wall.y + wall.h; wy++) {
+                            if (wall.gapY !== undefined && wy === wall.gapY) continue; // doorway gap
+                            const mapX = sx + wall.x;
+                            const mapY = sy + wy;
+                            if (mapX > sx && mapX < sx + rw - 1 && mapY > sy && mapY < sy + rh - 1) {
+                                this.mapData[mapY][mapX] = 11;
+                            }
+                        }
+                    }
+                }
+            }
+
             // Exit door
             const doorX = sx + layout.exitDoor.relX;
             const doorY = sy + layout.exitDoor.relY;
@@ -418,6 +446,11 @@ class GameScene extends Phaser.Scene {
             case 'couch': return () => this.drawCouch(gfx, px, py);
             case 'dining_table': return () => this.drawTable(gfx, px, py);
             case 'kitchen_counter': return () => this.drawKitchenCounter(gfx, px, py);
+            case 'stove': return () => this.drawStove(gfx, px, py);
+            case 'counter': return () => this.drawCounter(gfx, px, py);
+            case 'upper_cabinet': return () => this.drawUpperCabinet(gfx, px, py);
+            case 'microwave': return () => this.drawMicrowave(gfx, px, py);
+            case 'dish_rack': return () => this.drawDishRack(gfx, px, py);
             case 'fridge': return () => this.drawFridge(gfx, px, py);
             case 'toilet': return () => this.drawToilet(gfx, px, py);
             case 'rug': return () => this.drawRug(gfx, px, py);
@@ -647,6 +680,7 @@ class GameScene extends Phaser.Scene {
         gfx.fillRect(x + 4, y + 22, 12, 10);
     }
 
+    // Legacy kitchen counter (4 circles = stovetop everywhere) — kept for backwards compat
     drawKitchenCounter(gfx, x, y) {
         gfx.fillStyle(0x9E9E9E);
         gfx.fillRect(x - 20, y - 16, 50, 32);
@@ -659,14 +693,125 @@ class GameScene extends Phaser.Scene {
         gfx.strokeCircle(x + 14, y + 10, 6);
     }
 
+    // === MODULAR KITCHEN APPLIANCES ===
+
+    drawStove(gfx, x, y) {
+        // 55x40 — 2 burners (orange circles) + oven door below
+        gfx.fillStyle(0x2A2A2A);
+        gfx.fillRect(x - 27, y - 20, 55, 40);
+        gfx.lineStyle(1, 0x1A1A1A);
+        gfx.strokeRect(x - 27, y - 20, 55, 40);
+        // Burners (orange rings)
+        gfx.lineStyle(2, 0xE65100);
+        gfx.strokeCircle(x - 10, y - 8, 7);
+        gfx.strokeCircle(x + 12, y - 8, 7);
+        // Burner centers
+        gfx.fillStyle(0xFF6D00, 0.6);
+        gfx.fillCircle(x - 10, y - 8, 3);
+        gfx.fillCircle(x + 12, y - 8, 3);
+        // Oven door
+        gfx.fillStyle(0x333333);
+        gfx.fillRect(x - 22, y + 4, 45, 14);
+        gfx.lineStyle(1, 0x444444);
+        gfx.strokeRect(x - 22, y + 4, 45, 14);
+        // Oven handle
+        gfx.fillStyle(0x666666);
+        gfx.fillRect(x - 16, y + 6, 32, 3);
+        // Knobs
+        gfx.fillStyle(0x555555);
+        gfx.fillCircle(x - 20, y - 16, 2.5);
+        gfx.fillCircle(x - 12, y - 16, 2.5);
+        gfx.fillCircle(x + 6, y - 16, 2.5);
+        gfx.fillCircle(x + 14, y - 16, 2.5);
+    }
+
+    drawCounter(gfx, x, y) {
+        // 45x40 — clean wood/stone workspace, no circles
+        gfx.fillStyle(0xA1887F);
+        gfx.fillRect(x - 22, y - 20, 45, 40);
+        gfx.lineStyle(1, 0x8D6E63);
+        gfx.strokeRect(x - 22, y - 20, 45, 40);
+        // Wood grain lines
+        gfx.lineStyle(1, 0x9C786C, 0.4);
+        gfx.lineBetween(x - 18, y - 10, x + 18, y - 10);
+        gfx.lineBetween(x - 18, y + 2, x + 18, y + 2);
+        gfx.lineBetween(x - 18, y + 14, x + 18, y + 14);
+        // Front panel line
+        gfx.lineStyle(1, 0x795548);
+        gfx.lineBetween(x - 22, y + 8, x + 23, y + 8);
+        // Drawer handle
+        gfx.fillStyle(0x6D4C41);
+        gfx.fillRect(x - 6, y + 12, 12, 3);
+    }
+
+    drawUpperCabinet(gfx, x, y) {
+        // 40x16 — wall-mounted, two-door panel
+        gfx.fillStyle(0x8D6E63);
+        gfx.fillRect(x - 20, y - 8, 40, 16);
+        gfx.lineStyle(1, 0x6D4C41);
+        gfx.strokeRect(x - 20, y - 8, 40, 16);
+        // Center split
+        gfx.lineBetween(x, y - 8, x, y + 8);
+        // Door knobs
+        gfx.fillStyle(0xD4A017);
+        gfx.fillCircle(x - 3, y, 1.5);
+        gfx.fillCircle(x + 3, y, 1.5);
+    }
+
+    drawMicrowave(gfx, x, y) {
+        // 28x18 — dark screen + green power dot
+        gfx.fillStyle(0x424242);
+        gfx.fillRect(x - 14, y - 9, 28, 18);
+        gfx.lineStyle(1, 0x333333);
+        gfx.strokeRect(x - 14, y - 9, 28, 18);
+        // Screen
+        gfx.fillStyle(0x1B1B1B);
+        gfx.fillRect(x - 11, y - 6, 16, 12);
+        // Control panel (right side)
+        gfx.fillStyle(0x555555);
+        gfx.fillRect(x + 7, y - 6, 5, 12);
+        // Green power dot
+        gfx.fillStyle(0x00E676);
+        gfx.fillCircle(x + 9, y + 3, 1.5);
+        // Door handle
+        gfx.fillStyle(0x666666);
+        gfx.fillRect(x + 5, y - 4, 2, 8);
+    }
+
+    drawDishRack(gfx, x, y) {
+        // 30x12 — wire rack for drying dishes
+        gfx.fillStyle(0xB0BEC5, 0.3);
+        gfx.fillRect(x - 15, y - 6, 30, 12);
+        // Wire frame
+        gfx.lineStyle(1, 0x78909C);
+        gfx.strokeRect(x - 15, y - 6, 30, 12);
+        // Vertical wire dividers (plates standing up)
+        for (let i = 0; i < 5; i++) {
+            const wx = x - 12 + i * 6;
+            gfx.lineBetween(wx, y - 5, wx, y + 5);
+        }
+        // Base drip tray
+        gfx.fillStyle(0x90A4AE, 0.5);
+        gfx.fillRect(x - 14, y + 4, 28, 2);
+    }
+
     drawFridge(gfx, x, y) {
-        gfx.fillStyle(0xCCCCCC);
-        gfx.fillRect(x - 20, y - 48, 24, 30);
-        gfx.lineStyle(2, 0x000000);
-        gfx.strokeRect(x - 20, y - 48, 24, 30);
-        gfx.lineBetween(x - 20, y - 34, x + 4, y - 34);
-        gfx.fillStyle(0x999999);
-        gfx.fillRect(x, y - 44, 2, 8);
+        // 40x65 — tall, two-door, proper handles
+        gfx.fillStyle(0xE0E0E0);
+        gfx.fillRect(x - 20, y - 32, 40, 65);
+        gfx.lineStyle(2, 0xBDBDBD);
+        gfx.strokeRect(x - 20, y - 32, 40, 65);
+        // Door split (freezer top, fridge bottom)
+        gfx.lineStyle(2, 0x9E9E9E);
+        gfx.lineBetween(x - 20, y - 8, x + 20, y - 8);
+        // Freezer handle
+        gfx.fillStyle(0x757575);
+        gfx.fillRect(x + 12, y - 26, 3, 14);
+        // Fridge handle
+        gfx.fillRect(x + 12, y - 2, 3, 20);
+        // Subtle brand badge
+        gfx.fillStyle(0xBDBDBD);
+        gfx.fillRect(x - 6, y - 30, 12, 3);
     }
 
     drawToilet(gfx, x, y) {
@@ -909,10 +1054,7 @@ class GameScene extends Phaser.Scene {
             }
         }
 
-        // === EXTRA BENCHES (south area + east side) ===
-        this.addBench(gfx, 26 * 64 + 32, 26 * 64 + 32);
-        this.addBench(gfx, 10 * 64 + 32, 26 * 64 + 32);
-        this.addBench(gfx, 40 * 64 + 32, 12 * 64 + 32);
+        // Extra benches removed — were causing "random party" confusion at (26,26), (10,26), (40,12)
     }
 
     drawFireHydrant(gfx, x, y) {

@@ -20,13 +20,17 @@ const ROOM_LAYOUTS = {
             { type: 'couch', relX: 2.5, relY: 5.2, physics: { width: 80, height: 30 } },
             { type: 'rug', relX: 3.5, relY: 5.8, physics: null },
             { type: 'dining_table', relX: 5.5, relY: 2.5, physics: { width: 60, height: 40 } },
-            { type: 'kitchen_counter', relX: 8, relY: 1.5, physics: { width: 50, height: 32 } },
-            { type: 'fridge', relX: 7.5, relY: 3, physics: { width: 32, height: 52 } },
+            { type: 'stove', relX: 8, relY: 1.5, physics: { width: 55, height: 40 } },
+            { type: 'counter', relX: 7, relY: 1.5, physics: { width: 45, height: 40 } },
+            { type: 'fridge', relX: 7.5, relY: 3, physics: { width: 40, height: 65 } },
             { type: 'toilet', relX: 8, relY: 6, physics: { width: 22, height: 28 } },
+            { type: 'sink', relX: 7.5, relY: 5.5, physics: { width: 28, height: 20 } },
         ],
-        dividers: [
-            { relX: 6.5, relY: 4.5, width: 8, height: 128 },  // bathroom divider
+        // Interior walls as tile positions: [{x, y, w, h, gapX?, gapY?}] relative to room origin
+        interiorWalls: [
+            { x: 7, y: 4, h: 3, gapY: 5 },  // bathroom wall (vertical, gap at y=5 for doorway)
         ],
+        dividers: [],
         npcs: [
             { relX: 2.5, relY: 5, patrol: 'stand', range: 0, behavior: 'sitting_couch' },
             { relX: 2, relY: 1.8, patrol: 'stand', range: 0, behavior: 'sleeping' },
@@ -47,12 +51,15 @@ const ROOM_LAYOUTS = {
             { type: 'couch', relX: 2.5, relY: 4.2, physics: { width: 80, height: 30 } },
             { type: 'tv', relX: 2.5, relY: 2.5, physics: { width: 50, height: 10 } },
             { type: 'rug', relX: 3, relY: 5.2, physics: null },
-            { type: 'fridge', relX: 6, relY: 2, physics: { width: 32, height: 52 } },
+            { type: 'fridge', relX: 6, relY: 2, physics: { width: 40, height: 65 } },
+            { type: 'microwave', relX: 6, relY: 1.2, physics: { width: 28, height: 18 } },
             { type: 'toilet', relX: 8, relY: 6, physics: { width: 22, height: 28 } },
+            { type: 'sink', relX: 7.5, relY: 5.5, physics: { width: 28, height: 20 } },
         ],
-        dividers: [
-            { relX: 6.5, relY: 4.5, width: 8, height: 128 },  // bathroom divider
+        interiorWalls: [
+            { x: 7, y: 4, h: 3, gapY: 5 },  // bathroom wall
         ],
+        dividers: [],
         npcs: [
             { relX: 2.5, relY: 4, patrol: 'stand', range: 0, behavior: 'sitting_couch' },
             { relX: 8, relY: 6, patrol: 'stand', range: 0, behavior: 'on_toilet' },
@@ -77,14 +84,17 @@ const ROOM_LAYOUTS = {
             { type: 'couch', relX: 2.5, relY: 5.2, physics: { width: 80, height: 30 } },
             { type: 'rug', relX: 3.5, relY: 5.8, physics: null },
             { type: 'dining_table', relX: 5, relY: 4.5, physics: { width: 60, height: 40 } },
-            { type: 'kitchen_counter', relX: 7.5, relY: 1.5, physics: { width: 50, height: 32 } },
-            { type: 'fridge', relX: 7.5, relY: 3, physics: { width: 32, height: 52 } },
+            { type: 'stove', relX: 7, relY: 1.5, physics: { width: 55, height: 40 } },
+            { type: 'counter', relX: 8, relY: 1.5, physics: { width: 45, height: 40 } },
+            { type: 'sink', relX: 8, relY: 2.5, physics: { width: 28, height: 20 } },
+            { type: 'fridge', relX: 7.5, relY: 3, physics: { width: 40, height: 65 } },
             { type: 'toilet', relX: 8, relY: 6, physics: { width: 22, height: 28 } },
         ],
-        dividers: [
-            { relX: 5, relY: 2.8, width: 64, height: 8 },   // horizontal bedroom partition
-            { relX: 6.5, relY: 4.5, width: 8, height: 128 }, // bathroom divider
+        interiorWalls: [
+            { x: 1, y: 3, w: 4, gapX: 4 },  // horizontal bedroom partition (gap at x=4 for doorway)
+            { x: 7, y: 4, h: 3, gapY: 5 },  // bathroom wall
         ],
+        dividers: [],
         npcs: [
             { relX: 2, relY: 1.8, patrol: 'stand', range: 0, behavior: 'sleeping' },
             { relX: 5, relY: 4.5, patrol: 'stand', range: 0, behavior: 'eating' },
@@ -106,15 +116,18 @@ const ROOM_LAYOUTS = {
             { type: 'bed', relX: 2, relY: 2, physics: { width: 54, height: 80 } },
             { type: 'couch', relX: 5, relY: 5.2, physics: { width: 80, height: 30 } },
             { type: 'tv', relX: 5, relY: 3.5, physics: { width: 50, height: 10 } },
-            { type: 'kitchen_counter', relX: 7.5, relY: 2, physics: { width: 50, height: 32 } },
-            { type: 'fridge', relX: 8.2, relY: 1.5, physics: { width: 32, height: 52 } },
+            { type: 'counter', relX: 7.5, relY: 2, physics: { width: 45, height: 40 } },
+            { type: 'stove', relX: 8.2, relY: 2, physics: { width: 55, height: 40 } },
+            { type: 'fridge', relX: 8.2, relY: 1.2, physics: { width: 40, height: 65 } },
+            { type: 'upper_cabinet', relX: 7.5, relY: 1.2, physics: null },
             { type: 'sink', relX: 8, relY: 5.5, physics: { width: 28, height: 20 } },
             { type: 'toilet', relX: 8, relY: 6.5, physics: { width: 22, height: 28 } },
         ],
-        dividers: [
-            { relX: 3.5, relY: 1, width: 8, height: 96 },    // bedroom partition (vertical, 1.5 tiles — leaves gap to walk around)
-            { relX: 6.8, relY: 4.5, width: 8, height: 128 },  // bathroom divider
+        interiorWalls: [
+            { x: 4, y: 1, h: 2 },            // bedroom partition (short vertical, gap below for walkthrough)
+            { x: 7, y: 4, h: 3, gapY: 5 },   // bathroom wall
         ],
+        dividers: [],
         npcs: [
             { relX: 5, relY: 5, patrol: 'stand', range: 0, behavior: 'sitting_couch' },
             { relX: 2, relY: 1.8, patrol: 'stand', range: 0, behavior: 'sleeping' },
@@ -170,16 +183,21 @@ const ROOM_LAYOUTS = {
             { type: 'dining_table', relX: 5.5, relY: 4, physics: { width: 60, height: 40 } },
             { type: 'dining_table', relX: 2.5, relY: 6, physics: { width: 60, height: 40 } },
             { type: 'dining_table', relX: 5.5, relY: 6, physics: { width: 60, height: 40 } },
-            // L-shaped counter (two segments)
-            { type: 'kitchen_counter', relX: 8, relY: 3, physics: { width: 50, height: 32 } },
-            { type: 'kitchen_counter', relX: 9.5, relY: 2, physics: { width: 50, height: 32 } },
-            // Kitchen equipment
-            { type: 'fridge', relX: 10, relY: 4, physics: { width: 32, height: 52 } },
-            { type: 'sink', relX: 8, relY: 1.5, physics: { width: 28, height: 20 } },
+            // L-shaped kitchen: horizontal arm (counter-stove-counter along top)
+            { type: 'counter', relX: 8.5, relY: 1.5, physics: { width: 45, height: 40 } },
+            { type: 'stove', relX: 9.5, relY: 1.5, physics: { width: 55, height: 40 } },
+            { type: 'counter', relX: 10.5, relY: 1.5, physics: { width: 45, height: 40 } },
+            // Vertical arm (counter-sink-counter along right)
+            { type: 'counter', relX: 10.5, relY: 2.5, physics: { width: 45, height: 40 } },
+            { type: 'sink', relX: 10.5, relY: 3.5, physics: { width: 40, height: 40 } },
+            // Fridge alone in top-right corner
+            { type: 'fridge', relX: 10, relY: 4.5, physics: { width: 40, height: 65 } },
+            { type: 'dish_rack', relX: 8.5, relY: 2.5, physics: null },
         ],
-        dividers: [
-            { relX: 7.5, relY: 1, width: 8, height: 192 }, // wall between dining and kitchen
+        interiorWalls: [
+            { x: 8, y: 1, h: 4, gapY: 3 },  // wall between dining and kitchen (gap at y=3 for entry)
         ],
+        dividers: [],
         npcs: [
             { relX: 9, relY: 2.5, patrol: 'stand', range: 0, behavior: 'cooking' },
             { relX: 2.5, relY: 4, patrol: 'stand', range: 0, behavior: 'eating' },
@@ -221,6 +239,11 @@ const FURNITURE_REGISTRY = {
     couch:            { texture: 'deco_couch',            draw: 'drawCouch' },
     dining_table:     { texture: 'deco_dining_table',     draw: 'drawTable' },
     kitchen_counter:  { texture: 'deco_kitchen_counter',  draw: 'drawKitchenCounter' },
+    stove:            { texture: 'deco_stove',            draw: 'drawStove' },
+    counter:          { texture: 'deco_counter',          draw: 'drawCounter' },
+    upper_cabinet:    { texture: 'deco_upper_cabinet',    draw: 'drawUpperCabinet' },
+    microwave:        { texture: 'deco_microwave',        draw: 'drawMicrowave' },
+    dish_rack:        { texture: 'deco_dish_rack',        draw: 'drawDishRack' },
     fridge:           { texture: 'deco_fridge',           draw: 'drawFridge' },
     toilet:           { texture: 'deco_toilet',           draw: 'drawToilet' },
     rug:              { texture: 'deco_rug',              draw: 'drawRug' },

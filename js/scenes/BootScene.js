@@ -101,7 +101,8 @@ class BootScene extends Phaser.Scene {
             'bench', 'outdoor_table', 'church_cross', 'duck',
             'window_small', 'window_tall', 'couch', 'dining_table',
             'kitchen_counter', 'fridge', 'toilet', 'rug',
-            'cafe_sign', 'bed', 'tv', 'sink', 'bookshelf'
+            'cafe_sign', 'bed', 'tv', 'sink', 'bookshelf',
+            'stove', 'counter', 'upper_cabinet', 'microwave', 'dish_rack'
         ];
 
         for (const name of decorations) {
