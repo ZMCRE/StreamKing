@@ -391,10 +391,14 @@ class GameScene extends Phaser.Scene {
                 }
             }
 
-            // Exit door
+            // Exit door — place exit tile and widen the gap by clearing adjacent
+            // wall tiles on the bottom row so the dog can pass through easily
             const doorX = sx + layout.exitDoor.relX;
             const doorY = sy + layout.exitDoor.relY;
             this.mapData[doorY][doorX] = 15;
+            // Clear tiles to left and right of exit door to widen passage (3 tiles wide)
+            if (doorX - 1 > sx) this.mapData[doorY][doorX - 1] = 7; // wood floor
+            if (doorX + 1 < sx + rw - 1) this.mapData[doorY][doorX + 1] = 7; // wood floor
 
             const link = this.doors.find(d => d.buildingId === roomId);
             if (link) {
@@ -1060,6 +1064,11 @@ class GameScene extends Phaser.Scene {
         const portalX = 6 * 64 + 32;
         const portalY = 10 * 64 + 32;
         this.midnightPortal = { x: portalX, y: portalY };
+        // DEBUG: bright red square so you can find it easily
+        gfx.fillStyle(0xFF0000, 0.6);
+        gfx.fillRect(portalX - 32, portalY - 32, 64, 64);
+        gfx.lineStyle(3, 0xFF0000);
+        gfx.strokeRect(portalX - 32, portalY - 32, 64, 64);
         // Stone ring
         gfx.fillStyle(0x4A4A5A);
         gfx.strokeCircle(portalX, portalY, 28);
@@ -1069,10 +1078,10 @@ class GameScene extends Phaser.Scene {
         this.portalGfx = this.add.graphics();
         this.portalGfx.setDepth(1.5);
         this.portalPhase = 0;
-        // Label
-        this.add.text(portalX, portalY - 40, '???', {
-            fontSize: '8px', fontFamily: 'Arial Black', color: '#6688AA',
-            stroke: '#000000', strokeThickness: 2,
+        // Label — obvious for now
+        this.add.text(portalX, portalY - 44, 'PORTAL', {
+            fontSize: '10px', fontFamily: 'Arial Black', color: '#FF4444',
+            stroke: '#000000', strokeThickness: 3,
         }).setOrigin(0.5).setDepth(3);
     }
 
@@ -1310,8 +1319,8 @@ class GameScene extends Phaser.Scene {
         const dogTY = Math.floor(this.dog.y / 64);
 
         for (const door of this.doors) {
-            // Check outside door -> inside
-            if (dogTX === door.outside.x && dogTY === door.outside.y) {
+            // Check outside door -> inside (only when outdoors)
+            if (!this.isIndoors && dogTX === door.outside.x && dogTY === door.outside.y) {
                 this.teleportDog(door.inside.x * 64 + 32, door.inside.y * 64 + 32);
                 this.isIndoors = true;
                 this.currentRoom = door.buildingId;
@@ -1319,14 +1328,23 @@ class GameScene extends Phaser.Scene {
                 this.doorCooldown = 500;
                 return;
             }
-            // Check inside exit door -> outside
-            if (door.insideExit && dogTX === door.insideExit.x && dogTY === door.insideExit.y) {
-                this.teleportDog(door.outsideReturn.x * 64 + 32, door.outsideReturn.y * 64 + 32);
-                this.isIndoors = false;
-                this.currentRoom = null;
-                this.exitRoom();
-                this.doorCooldown = 500;
-                return;
+            // Check inside exit door -> outside (only when indoors)
+            // Use proximity-based detection: the dog must be close to the exit
+            // door center and roughly aligned with it. This is more forgiving
+            // than exact tile match, preventing the dog from getting stuck
+            // because it can't physically squeeze through the wall gap.
+            if (this.isIndoors && door.insideExit) {
+                const doorCenterX = door.insideExit.x * 64 + 32;
+                const doorCenterY = door.insideExit.y * 64 + 32;
+                const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, doorCenterX, doorCenterY);
+                if (dist < 48) {
+                    this.teleportDog(door.outsideReturn.x * 64 + 32, door.outsideReturn.y * 64 + 32);
+                    this.isIndoors = false;
+                    this.currentRoom = null;
+                    this.exitRoom();
+                    this.doorCooldown = 500;
+                    return;
+                }
             }
         }
     }
@@ -1385,11 +1403,13 @@ class GameScene extends Phaser.Scene {
         );
 
         // Restrict dog physics to inner walkable area (prevents corner escape)
-        // Extend bottom by 1 tile so the dog can reach the exit door on the wall row
+        // Extend bottom by 2 tiles so the dog can comfortably reach the exit door
+        // on the wall row (exit door is on the perimeter wall, 1 tile below the
+        // last interior row)
         const pad = 8;
         this.dog.body.setBoundsRectangle(new Phaser.Geom.Rectangle(
             bounds.x + pad, bounds.y + pad,
-            bounds.width - pad * 2, bounds.height - pad + 64
+            bounds.width - pad * 2, bounds.height - pad * 2 + 128
         ));
 
         // Dark overlay to hide everything outside the room

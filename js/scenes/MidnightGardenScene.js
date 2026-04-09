@@ -237,7 +237,7 @@ class MidnightGardenScene extends Phaser.Scene {
         this.mapData[15][24] = T.NIGHT_DOOR;
         this.doors.push({
             outside: { x: 24, y: 15 }, outsideReturn: { x: 24, y: 16 },
-            inside: { x: 14, y: 37 }, buildingId: 'lostfound',
+            inside: { x: 18, y: 37 }, buildingId: 'lostfound',
         });
 
         // === BUILDING INTERIORS (below visible map, row 32+) ===
@@ -934,10 +934,11 @@ class MidnightGardenScene extends Phaser.Scene {
         makeLight('light_tiny', 50);      // glow puddles
 
         // Reusable stamp images (hidden, used only for erase)
-        this.lightBig = this.add.image(0, 0, 'light_big').setVisible(false);
-        this.lightMed = this.add.image(0, 0, 'light_med').setVisible(false);
-        this.lightSmall = this.add.image(0, 0, 'light_small').setVisible(false);
-        this.lightTiny = this.add.image(0, 0, 'light_tiny').setVisible(false);
+        // Origin 0,0 so erase position = top-left corner of the texture
+        this.lightBig = this.add.image(0, 0, 'light_big').setVisible(false).setOrigin(0, 0);
+        this.lightMed = this.add.image(0, 0, 'light_med').setVisible(false).setOrigin(0, 0);
+        this.lightSmall = this.add.image(0, 0, 'light_small').setVisible(false).setOrigin(0, 0);
+        this.lightTiny = this.add.image(0, 0, 'light_tiny').setVisible(false).setOrigin(0, 0);
 
         this.flashlightOn = true;
     }
@@ -1117,7 +1118,8 @@ class MidnightGardenScene extends Phaser.Scene {
         const inDarkZone = this.mapData[dogTY] && this.mapData[dogTY][dogTX] === this.C.tiles.DARK_ZONE;
         const alpha = inDarkZone ? fl.darkZoneAlpha : fl.ambientAlpha;
 
-        // Fill with darkness
+        // Clear previous frame then fill with darkness
+        this.darkRT.clear();
         this.darkRT.fill(0x050510, alpha);
 
         // Flicker
@@ -1633,8 +1635,11 @@ class MidnightGardenScene extends Phaser.Scene {
         if (!bounds) return;
 
         this.cameras.main.setBounds(bounds.fullX, bounds.fullY, bounds.fullWidth, bounds.fullHeight);
+        // Extend bottom by 1 tile so the dog can reach the exit door on the wall row
+        const pad = 8;
         this.dog.body.setBoundsRectangle(new Phaser.Geom.Rectangle(
-            bounds.x, bounds.y, bounds.width, bounds.height
+            bounds.x + pad, bounds.y + pad,
+            bounds.width - pad * 2, bounds.height - pad + 64
         ));
 
         // Update location label
