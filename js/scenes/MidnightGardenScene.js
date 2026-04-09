@@ -221,7 +221,7 @@ class MidnightGardenScene extends Phaser.Scene {
         this.mapData[12][7] = T.NIGHT_DOOR;
         this.doors.push({
             outside: { x: 7, y: 12 }, outsideReturn: { x: 7, y: 13 },
-            inside: { x: 7, y: 37 }, buildingId: 'library',
+            inside: { x: 10, y: 38 }, buildingId: 'library',
         });
 
         // Stargazer's Tower (top center, 13-16 x 2-6)
@@ -229,7 +229,7 @@ class MidnightGardenScene extends Phaser.Scene {
         this.mapData[6][14] = T.NIGHT_DOOR;
         this.doors.push({
             outside: { x: 14, y: 6 }, outsideReturn: { x: 14, y: 7 },
-            inside: { x: 4, y: 37 }, buildingId: 'tower',
+            inside: { x: 3, y: 38 }, buildingId: 'tower',
         });
 
         // Lost & Found (right, 21-26 x 11-15)
@@ -237,7 +237,7 @@ class MidnightGardenScene extends Phaser.Scene {
         this.mapData[15][24] = T.NIGHT_DOOR;
         this.doors.push({
             outside: { x: 24, y: 15 }, outsideReturn: { x: 24, y: 16 },
-            inside: { x: 18, y: 37 }, buildingId: 'lostfound',
+            inside: { x: 18, y: 38 }, buildingId: 'lostfound',
         });
 
         // === BUILDING INTERIORS (below visible map, row 32+) ===
@@ -907,38 +907,17 @@ class MidnightGardenScene extends Phaser.Scene {
     }
 
     buildFlashlightSystem() {
-        // RenderTexture-based lighting: fill with darkness, erase light holes
+        // Canvas-based lighting: draw directly on a canvas each frame
+        // This is the most reliable approach in Phaser 3
         const cam = this.cameras.main;
-        this.darkRT = this.add.renderTexture(0, 0, cam.width, cam.height);
-        this.darkRT.setDepth(20);
-        this.darkRT.setScrollFactor(0);
+        const w = cam.width;
+        const h = cam.height;
 
-        // Helper: generate a soft radial gradient circle texture
-        const makeLight = (key, size) => {
-            const g = this.make.graphics({ add: false });
-            const half = size / 2;
-            const steps = 24;
-            for (let i = steps; i >= 0; i--) {
-                const t = i / steps;
-                const r = half * (0.3 + 0.7 * t);
-                g.fillStyle(0xFFFFFF, (1 - t) * (1 - t));
-                g.fillCircle(half, half, r);
-            }
-            g.generateTexture(key, size, size);
-            g.destroy();
-        };
-
-        makeLight('light_big', 400);     // flashlight
-        makeLight('light_med', 180);      // lampposts
-        makeLight('light_small', 80);     // lanterns
-        makeLight('light_tiny', 50);      // glow puddles
-
-        // Reusable stamp images (hidden, used only for erase)
-        // Origin 0,0 so erase position = top-left corner of the texture
-        this.lightBig = this.add.image(0, 0, 'light_big').setVisible(false).setOrigin(0, 0);
-        this.lightMed = this.add.image(0, 0, 'light_med').setVisible(false).setOrigin(0, 0);
-        this.lightSmall = this.add.image(0, 0, 'light_small').setVisible(false).setOrigin(0, 0);
-        this.lightTiny = this.add.image(0, 0, 'light_tiny').setVisible(false).setOrigin(0, 0);
+        this.lightCanvas = this.textures.createCanvas('midnight_light', w, h);
+        this.lightImage = this.add.image(0, 0, 'midnight_light');
+        this.lightImage.setOrigin(0, 0);
+        this.lightImage.setScrollFactor(0);
+        this.lightImage.setDepth(20);
 
         this.flashlightOn = true;
     }
@@ -1107,67 +1086,105 @@ class MidnightGardenScene extends Phaser.Scene {
     // ==================== FLASHLIGHT ====================
 
     updateFlashlight() {
+        if (this.isIndoors) {
+            this.lightImage.setVisible(false);
+            return;
+        }
+        this.lightImage.setVisible(true);
+
         const cam = this.cameras.main;
         const zoom = cam.zoom;
         const fl = this.C.flashlight;
         const time = this.time.now;
+        const ctx = this.lightCanvas.context;
+        const w = this.lightCanvas.width;
+        const h = this.lightCanvas.height;
 
-        // Check if dog is in a dark zone
+        // Check dark zone
         const dogTX = Math.floor(this.dog.x / 64);
         const dogTY = Math.floor(this.dog.y / 64);
         const inDarkZone = this.mapData[dogTY] && this.mapData[dogTY][dogTX] === this.C.tiles.DARK_ZONE;
         const alpha = inDarkZone ? fl.darkZoneAlpha : fl.ambientAlpha;
 
-        // Clear previous frame then fill with darkness
-        this.darkRT.clear();
-        this.darkRT.fill(0x050510, alpha);
+        // Fill with darkness
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = `rgba(5, 5, 16, ${alpha})`;
+        ctx.fillRect(0, 0, w, h);
 
         // Flicker
         const flicker = Math.sin(time * fl.flickerSpeed) * fl.flickerAmount +
                          Math.sin(time * fl.flickerSpeed * 2.3) * fl.flickerAmount * 0.5;
         const bonusRadius = this.caughtFireflies * this.C.fireflies.lightBonus;
+        const radius = (fl.radius + flicker + bonusRadius) * zoom;
 
-        // Dog flashlight (screen coords)
+        // Dog screen position
         const dogSX = (this.dog.x - cam.scrollX) * zoom;
         const dogSY = (this.dog.y - cam.scrollY) * zoom;
-        const flashScale = (fl.radius + flicker + bonusRadius) / 200;
-        this.lightBig.setScale(flashScale);
-        this.darkRT.erase(this.lightBig, dogSX - 200 * flashScale, dogSY - 200 * flashScale);
+
+        // Punch circular light hole with radial gradient (cone/circle shape)
+        ctx.globalCompositeOperation = 'destination-out';
+        const grad = ctx.createRadialGradient(dogSX, dogSY, radius * 0.15, dogSX, dogSY, radius);
+        grad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+        grad.addColorStop(0.5, 'rgba(0, 0, 0, 0.8)');
+        grad.addColorStop(0.8, 'rgba(0, 0, 0, 0.3)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(dogSX, dogSY, radius, 0, Math.PI * 2);
+        ctx.fill();
 
         // Lamppost lights
         for (const lamp of this.lampposts) {
             const lsx = (lamp.x - cam.scrollX) * zoom;
             const lsy = ((lamp.y - 22) - cam.scrollY) * zoom;
-            this.darkRT.erase(this.lightMed, lsx - 90, lsy - 90);
+            const lr = 80 * zoom;
+            const lg = ctx.createRadialGradient(lsx, lsy, lr * 0.1, lsx, lsy, lr);
+            lg.addColorStop(0, 'rgba(0, 0, 0, 0.9)');
+            lg.addColorStop(0.6, 'rgba(0, 0, 0, 0.4)');
+            lg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = lg;
+            ctx.beginPath();
+            ctx.arc(lsx, lsy, lr, 0, Math.PI * 2);
+            ctx.fill();
         }
 
-        // Lantern lights
+        // Lantern lights (smaller)
         for (const lantern of this.lanterns) {
             const lsx = (lantern.x - cam.scrollX) * zoom;
             const lsy = (lantern.y - cam.scrollY) * zoom;
-            this.darkRT.erase(this.lightSmall, lsx - 40, lsy - 40);
+            const lr = 35 * zoom;
+            const lg = ctx.createRadialGradient(lsx, lsy, 2, lsx, lsy, lr);
+            lg.addColorStop(0, 'rgba(0, 0, 0, 0.7)');
+            lg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = lg;
+            ctx.beginPath();
+            ctx.arc(lsx, lsy, lr, 0, Math.PI * 2);
+            ctx.fill();
         }
 
-        // Glow puddles cast light
-        for (const puddle of this.puddles) {
-            if (puddle.radius > 5) {
+        // Glow puddles
+        const allPuddles = [...this.puddles];
+        if (this.activePuddle && this.activePuddle.radius > 3) allPuddles.push(this.activePuddle);
+        for (const puddle of allPuddles) {
+            if (puddle.radius > 3) {
                 const psx = (puddle.x - cam.scrollX) * zoom;
                 const psy = (puddle.y - cam.scrollY) * zoom;
-                this.darkRT.erase(this.lightTiny, psx - 25, psy - 25);
+                const pr = puddle.radius * zoom * 1.5;
+                const pg = ctx.createRadialGradient(psx, psy, 2, psx, psy, pr);
+                pg.addColorStop(0, 'rgba(0, 0, 0, 0.6)');
+                pg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = pg;
+                ctx.beginPath();
+                ctx.arc(psx, psy, pr, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
 
-        // Active puddle also casts light
-        if (this.activePuddle && this.activePuddle.radius > 3) {
-            const psx = (this.activePuddle.x - cam.scrollX) * zoom;
-            const psy = (this.activePuddle.y - cam.scrollY) * zoom;
-            this.darkRT.erase(this.lightTiny, psx - 25, psy - 25);
-        }
+        // Reset composite mode
+        ctx.globalCompositeOperation = 'source-over';
 
-        // Indoors — disable darkness
-        if (this.isIndoors) {
-            this.darkRT.clear();
-        }
+        // Push to GPU
+        this.lightCanvas.refresh();
     }
 
     // ==================== FIREFLY SYSTEM ====================
@@ -1524,11 +1541,11 @@ class MidnightGardenScene extends Phaser.Scene {
             }
         }
 
-        // Check lantern proximity
+        // Check lantern proximity (large radius since lanterns hang above in tree canopy)
         if (!showPrompt) {
             for (const lantern of this.lanterns) {
                 const dist = Phaser.Math.Distance.Between(dogX, dogY, lantern.x, lantern.y);
-                if (dist < 60) {
+                if (dist < 140) {
                     this.interactPrompt.setPosition(lantern.x, lantern.y - 30);
                     this.interactPrompt.setText('[E] Read');
                     this.interactPrompt.setVisible(true);
